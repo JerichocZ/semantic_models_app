@@ -1,0 +1,34 @@
+{
+    // VScode
+    "editor.wordWrap": "on",    
+    // Typst stuff --------------
+    "tinymist.preview.invertColors": "never",
+    "[typst]": {
+      "editor.defaultFormatter": "myriad-dreamin.tinymist",
+    "editor.formatOnSave": true
+    },
+
+    "tinymist.rootPath": "${workspaceFolder}/src",
+    "tinymist.fontPaths": [
+        "${workspaceFolder}/fonts"
+    ],
+    
+    // Spell Right stuff --------------
+    "spellright.notificationClass": "information",
+    "spellright.addToSystemDictionary": true,
+    "spellright.language": [
+        "en",
+        "es"
+    ],
+    "spellright.documentTypes": [
+        "markdown",
+        "latex",
+        "plaintext",
+        "python"
+    ],
+    "spellright.parserByClass": {
+        "typst": {
+            "parser": "plain"
+        }
+    },
+}
