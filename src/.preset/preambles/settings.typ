@@ -66,6 +66,7 @@
 #let layout_row_anchor_side_inset = (layout_link_block_side_width - layout_link_block_marker_width) / 2
 #let layout_row_port_gap = layout_link_block_side_gap + layout_row_anchor_side_inset
 #let layout_link_block_outer_port_gap = layout_row_port_gap
+#let layout_link_block_outer_anchor_reserve = layout_link_block_outer_port_gap
 #let layout_direct_pipe_inset = 6pt
 #let layout_direct_pipe_line_width = 0.75pt
 #let layout_direct_pipe_gutter = 4pt
@@ -74,8 +75,12 @@
 #let layout_direct_arrow_corner_radius = 4pt
 #let layout_direct_arrow_canvas_padding = 16pt
 
-#let alignment_content_width(level_count, include_info: true, pipe_width: 0pt) = {
-  let diagram_width = layout_column_width * level_count
+#let alignment_content_width(level_count, include_info: true, pipe_width: 0pt, level_widths: none) = {
+  let diagram_width = if level_widths == none {
+    layout_column_width * level_count
+  } else {
+    level_widths.sum()
+  }
   if level_count > 1 {
     diagram_width += layout_column_gap * (level_count - 1)
   }

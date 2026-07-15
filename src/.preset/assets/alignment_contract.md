@@ -102,8 +102,16 @@ Rows with one or more target-side link-blocks also expose a conditional
 `right-outer` anchor at the far edge of the link-block marker. A direct arrow
 targeting that row uses `right-outer`, so it stops before crossing the badge.
 The outer anchor adds the same clearance used between a table edge and its
-normal row port. Rows without a target-side link-block continue using the
-normal `right` anchor.
+normal row port. Its width is reserved inside the target-side row gutter, and
+the constellation inset remains outside that reserve, so the anchor and its
+arrowhead cannot overlap the constellation border. Rows without a target-side
+link-block continue using the normal `right` anchor.
+
+Constellation height follows its stacked content. Width uses
+`layout_column_width` as a minimum and grows when a contained block needs an
+outer target anchor. The widest constellation determines the width of its
+level column; page and direct-arrow overlay widths use those resolved level
+widths.
 
 Example anchor ids:
 

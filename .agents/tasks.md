@@ -506,6 +506,18 @@ Please finish by reporting:
 * whether any Typst/CeTZ limitations were found
 
 
+#### Stage 8 — User interaction rework
+Currently, the user must modify the `<project>/data/*` files to add new constelations, blocks and other stuff. This is kinda complex and confusing.
+
+##### Goal
+Enhance user interaction with the diagrams. The main idea is user to define diagram type, constelations and blocks from a single file, `main.typ`.
+
+##### Requirements
+
+
+
+
+
 ### Agents comments
 #### Status
 - 2026-07-09: Stage 1 completed. Proposed base folder structure added in the Information section.

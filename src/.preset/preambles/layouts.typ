@@ -1,7 +1,7 @@
 #import "settings.typ": *
 #import "common_functions.typ": field
 #import "alignment_model.typ": normalize_recipe
-#import "elements.typ": constellation_container, legend_panel, author_panel, comments_panel, anchor_debug_panel, direct_links_panel, link_blocks_panel, direct_links_for_scope, direct_pipe_between_levels, direct_pipe_slot, direct_pipe_total_width, direct_arrows_overlay, direct_arrow_origin_label
+#import "elements.typ": constellation_container, constellation_dynamic_width, legend_panel, author_panel, comments_panel, anchor_debug_panel, direct_links_panel, link_blocks_panel, direct_links_for_scope, direct_pipe_between_levels, direct_pipe_slot, direct_pipe_total_width, direct_arrows_overlay, direct_arrow_origin_label
 
 #let page_title(metadata, width: diagram_content_width) = [
   #block(width: width)[
@@ -72,13 +72,14 @@
 #let level_column(
   resolved,
   level,
+  width: layout_column_width,
   data_type_abstractions: (),
   links: (),
   show_anchor_debug: layout_show_anchor_debug,
   visible_block_ids: none,
   link_scope: "general",
 ) = [
-  #block(width: layout_column_width)[
+  #block(width: width)[
     #text(size: diagram_label_size, fill: color_muted, weight: 700)[LEVEL #level]
     #v(6pt)
     #let constellations_at_level = level_constellations(resolved, level)
@@ -99,11 +100,27 @@
           show_anchor_debug: show_anchor_debug,
           visible_block_ids: visible_block_ids,
           link_scope: link_scope,
+          width: width,
         )
       ]
     ]
   ]
 ]
+
+#let level_dynamic_width(resolved, level) = {
+  let widths = level_constellations(resolved, level).map(constellation => {
+    constellation_dynamic_width(
+      blocks_for_constellation(resolved, constellation.id),
+      resolved.links,
+    )
+  })
+
+  if widths.len() == 0 {
+    layout_column_width
+  } else {
+    widths.fold(layout_column_width, calc.max)
+  }
+}
 
 #let info_column(
   metadata,
@@ -151,18 +168,22 @@
   let cells = ()
   let visible_block_ids = resolved.blocks.map(block_data => block_data.id)
   let pipe_width = direct_pipe_total_width(resolved, levels, visible_block_ids: visible_block_ids)
+  let level_widths = levels.map(level => level_dynamic_width(resolved, level))
   let diagram_width = alignment_content_width(
     levels.len(),
     include_info: false,
     pipe_width: pipe_width,
+    level_widths: level_widths,
   )
 
   for index in range(0, levels.len()) {
     let level = levels.at(index)
-    columns.push(layout_column_width)
+    let level_width = level_widths.at(index)
+    columns.push(level_width)
     cells.push(level_column(
       resolved,
       level,
+      width: level_width,
       data_type_abstractions: data_type_abstractions,
       links: resolved.links,
       show_anchor_debug: show_anchor_debug,
@@ -242,9 +263,11 @@
     links: links,
   ))
   let pipe_width = direct_pipe_total_width(resolved, resolved.layout.levels)
+  let level_widths = resolved.layout.levels.map(level => level_dynamic_width(resolved, level))
   let content_width = alignment_content_width(
     resolved.layout.levels.len(),
     pipe_width: pipe_width,
+    level_widths: level_widths,
   )
 
   [
@@ -283,7 +306,12 @@
     links: links,
   ))
   let constellation = resolved.constellations.find(item => item.id == constellation_id)
-  let content_width = alignment_content_width(1)
+  let constellation_width = if constellation == none {
+    layout_column_width
+  } else {
+    constellation_dynamic_width(blocks_for_constellation(resolved, constellation.id), resolved.links)
+  }
+  let content_width = constellation_width + layout_column_gap + side_panel_width
 
   if constellation == none {
     return [
@@ -304,7 +332,7 @@
       #page_title(metadata, width: content_width)
       #v(18pt)
       #grid(
-        columns: (layout_column_width, side_panel_width),
+        columns: (constellation_width, side_panel_width),
         gutter: layout_column_gap,
         align: (left + top, left + top),
         [
@@ -318,6 +346,7 @@
             show_anchor_debug: show_anchor_debug,
             visible_block_ids: visible_block_ids,
             link_scope: "constellation:" + constellation.id,
+            width: constellation_width,
           )
         ],
         info_column(

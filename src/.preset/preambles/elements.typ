@@ -783,6 +783,7 @@
 #let compact_side_cell(
   links,
   role: "source",
+  width: layout_link_block_side_width,
   anchor_id: none,
   outer_anchor_id: none,
   anchor_side: "left",
@@ -799,7 +800,7 @@
 
   [
     #block(
-      width: layout_link_block_side_width,
+      width: width,
       height: layout_row_height,
       inset: 0pt,
     )[
@@ -830,13 +831,13 @@
   ]
 }
 
-#let compact_blank_side(height: layout_row_height) = [
-  #block(width: layout_link_block_side_width, height: height)[]
+#let compact_blank_side(width: layout_link_block_side_width, height: layout_row_height) = [
+  #block(width: width, height: height)[]
 ]
 
-#let compact_title_row(title, accent) = [
+#let compact_title_row(title, accent, right_side_width: layout_link_block_side_width) = [
   #grid(
-    columns: (layout_link_block_side_width, 1fr, layout_link_block_side_width),
+    columns: (layout_link_block_side_width, 1fr, right_side_width),
     gutter: layout_link_block_side_gap,
     align: (center + horizon, left + horizon, center + horizon),
     compact_blank_side(height: layout_row_height),
@@ -850,13 +851,13 @@
         #text(size: block_title_size, fill: white, weight: 700)[#title]
       ]
     ],
-    compact_blank_side(height: layout_row_height),
+    compact_blank_side(width: right_side_width, height: layout_row_height),
   )
 ]
 
-#let compact_header_row() = [
+#let compact_header_row(right_side_width: layout_link_block_side_width) = [
   #grid(
-    columns: (layout_link_block_side_width, 1fr, layout_link_block_side_width),
+    columns: (layout_link_block_side_width, 1fr, right_side_width),
     gutter: layout_link_block_side_gap,
     align: (center + horizon, left + horizon, center + horizon),
     compact_blank_side(),
@@ -868,7 +869,7 @@
       compact_header_cell([Type]),
       compact_header_cell([Attrs]),
     ),
-    compact_blank_side(),
+    compact_blank_side(width: right_side_width),
   )
 ]
 
@@ -880,6 +881,7 @@
   attrs,
   source_link_blocks,
   target_link_blocks,
+  right_side_width: layout_link_block_side_width,
   fill: white,
   show_anchor_debug: layout_show_anchor_debug,
   visible_block_ids: none,
@@ -887,7 +889,7 @@
   arrow_color: color_link_arrow,
 ) = [
   #grid(
-    columns: (layout_link_block_side_width, 1fr, layout_link_block_side_width),
+    columns: (layout_link_block_side_width, 1fr, right_side_width),
     gutter: layout_link_block_side_gap,
     align: (center + horizon, left + horizon, center + horizon),
     compact_side_cell(
@@ -909,6 +911,7 @@
     compact_side_cell(
       target_link_blocks,
       role: "target",
+      width: right_side_width,
       anchor_id: row.anchors.right,
       outer_anchor_id: row.anchors.right_outer,
       anchor_side: "right",
@@ -988,9 +991,15 @@
   }
 
   let rows = block_data.rows.sorted(key: row => row.order)
+  let has_outer_target_anchor = rows.any(row => link_blocks_for_target(links, block_data.id, row.id).len() > 0)
+  let right_side_width = layout_link_block_side_width + if has_outer_target_anchor {
+    layout_link_block_outer_anchor_reserve
+  } else {
+    0pt
+  }
   let rows_content = (
-    compact_title_row(block_data.title, accent),
-    compact_header_row(),
+    compact_title_row(block_data.title, accent, right_side_width: right_side_width),
+    compact_header_row(right_side_width: right_side_width),
   )
 
   for row in rows {
@@ -1009,6 +1018,7 @@
       attrs,
       source_link_blocks,
       target_link_blocks,
+      right_side_width: right_side_width,
       fill: body_fill,
       show_anchor_debug: show_anchor_debug,
       visible_block_ids: visible_block_ids,
@@ -1026,6 +1036,19 @@
   ]
 }
 
+#let block_has_outer_target_anchor(block_data, links) = {
+  block_data.rows.any(row => link_blocks_for_target(links, block_data.id, row.id).len() > 0)
+}
+
+#let constellation_dynamic_width(blocks, links) = {
+  let needs_outer_anchor = blocks.any(block_data => block_has_outer_target_anchor(block_data, links))
+  layout_column_width + if needs_outer_anchor {
+    layout_link_block_outer_anchor_reserve
+  } else {
+    0pt
+  }
+}
+
 #let constellation_container(
   constellation,
   blocks,
@@ -1034,12 +1057,19 @@
   show_anchor_debug: layout_show_anchor_debug,
   visible_block_ids: none,
   link_scope: "general",
+  width: none,
 ) = {
   let accent = field(constellation.raw, "color", default: color_main)
   let fill = field(constellation.raw, "fill", default: color_panel)
 
+  let container_width = if width == none {
+    constellation_dynamic_width(blocks, links)
+  } else {
+    width
+  }
+
   block(
-    width: layout_column_width,
+    width: container_width,
     radius: layout_constellation_radius,
     fill: fill,
     stroke: (paint: accent, thickness: 1pt),

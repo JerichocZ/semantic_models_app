@@ -2,7 +2,7 @@
   (
     id: "lo",
     title: [Locations],
-    description: [Foundational location entities.],
+    description: [Locations schema],
     level: 1,
     order: 1,
     color: rgb("#f06b32"),
