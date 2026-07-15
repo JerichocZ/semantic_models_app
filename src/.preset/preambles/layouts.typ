@@ -60,7 +60,7 @@
 #let blocks_for_constellation(resolved, constellation_id) = {
   resolved.blocks
     .filter(block_data => block_data.constellation == constellation_id)
-    .sorted(key: block_data => block_data.order)
+    .sorted(key: block_data => block_data.block_level * 1000000 + block_data.block_order * 1000 + block_data.source_index)
 }
 
 #let level_constellations(resolved, level) = {
@@ -95,6 +95,7 @@
         #constellation_container(
           constellation,
           blocks_for_constellation(resolved, constellation.id),
+          resolved: resolved,
           data_type_abstractions: data_type_abstractions,
           links: links,
           show_anchor_debug: show_anchor_debug,
@@ -110,6 +111,8 @@
 #let level_dynamic_width(resolved, level) = {
   let widths = level_constellations(resolved, level).map(constellation => {
     constellation_dynamic_width(
+      resolved,
+      constellation.id,
       blocks_for_constellation(resolved, constellation.id),
       resolved.links,
     )
@@ -250,6 +253,7 @@
   links: (),
   legend_terms: (),
   data_type_abstractions: (),
+  custom_color_schemas: (),
   show_anchor_debug: layout_show_anchor_debug,
 ) = {
   if blocks.len() == 0 {
@@ -261,7 +265,7 @@
     constellations: constellations,
     blocks: blocks,
     links: links,
-  ))
+  ), custom_color_schemas: custom_color_schemas)
   let pipe_width = direct_pipe_total_width(resolved, resolved.layout.levels)
   let level_widths = resolved.layout.levels.map(level => level_dynamic_width(resolved, level))
   let content_width = alignment_content_width(
@@ -293,6 +297,7 @@
   links: (),
   legend_terms: (),
   data_type_abstractions: (),
+  custom_color_schemas: (),
   show_anchor_debug: layout_show_anchor_debug,
 ) = {
   if blocks.len() == 0 {
@@ -304,12 +309,17 @@
     constellations: constellations,
     blocks: blocks,
     links: links,
-  ))
+  ), custom_color_schemas: custom_color_schemas)
   let constellation = resolved.constellations.find(item => item.id == constellation_id)
   let constellation_width = if constellation == none {
     layout_column_width
   } else {
-    constellation_dynamic_width(blocks_for_constellation(resolved, constellation.id), resolved.links)
+    constellation_dynamic_width(
+      resolved,
+      constellation.id,
+      blocks_for_constellation(resolved, constellation.id),
+      resolved.links,
+    )
   }
   let content_width = constellation_width + layout_column_gap + side_panel_width
 
@@ -341,6 +351,7 @@
           #constellation_container(
             constellation,
             visible_blocks,
+            resolved: resolved,
             data_type_abstractions: data_type_abstractions,
             links: resolved.links,
             show_anchor_debug: show_anchor_debug,

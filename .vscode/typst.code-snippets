@@ -1,3 +1,65 @@
 {
+    "New column": {
+        "prefix": "newcol",
+        "body": [
+            "(",
+            "\tid: \"${1:id}\",",
+            "\tname: \"${2:${1:name}}\",",
+            "\tdata_type: (",
+            "\t\tsource: \"${3:integer, float, varchar, bool}\",",
+            "${4:\t\tsize: ${5:size}}",
+            "\t),",
+            "\tattrs: (${6:${7:\"NN\",} ${8:\"PK\",} ${9:\"FK\", ${10:\"ODC\",}}  ${11:\"D${12:default}\",}})",
+            "),"
+        ]
+    },
 
+    "New block": {
+        "prefix": "newblock",
+        "body": [
+            "(",
+            "\tid: \"${1:id}\",",
+            "\tconstellation: \"${2:constellation}\",",
+            "\ttitle: [${3:${1:block name}}],",
+            "\tkind: \"${4:database_table}\",",
+            "\tlevel: $5,",
+            "\torder: $6,",
+            "\tcolumns: (",
+            "\t\t$0",
+            "\t),",
+            "${7:constraints: (),}",
+            "),"
+        ]
+    },
+
+    "New link": {
+        "prefix": "newlink",
+        "body": [
+            "(",
+            "\tid: \"${1:id}\",",
+            "\tsource : (",
+            "\t\tblock: \"${2:source block}\",",
+            "\t\trow: \"${3:source row}\"",
+            "\t),",
+            "\ttarget : (",
+            "\t\tblock: \"${4:target block}\",",
+            "\t\trow: \"${5:${3:target row}}\"",
+            "\t),",
+            "\tmode: \"${6:auto, direct, link-block}\",",
+            "),"
+        ]
+    },
+
+    "New constellation": {
+        "prefix": "newconstellation",
+        "body": [
+            "(",
+            "\tid: \"${1:id}\",",
+            "\ttitle: [${2:title}],",
+            "\tdescription: [${3:description}],",
+            "\tlevel: $4,",
+            "\torder: $5,",
+            "),"
+        ]
+    }
 }

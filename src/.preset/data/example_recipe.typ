@@ -45,6 +45,7 @@
       id: "lo_locations",
       constellation: "lo",
       title: [lo_locations],
+      level: 1,
       order: 1,
       columns: (
         (id: "location_id", name: [location_id]),
@@ -55,6 +56,7 @@
       id: "ds_sensors",
       constellation: "ds",
       title: [ds_sensors],
+      level: 1,
       columns: (
         (id: "sensor_id", name: [sensor_id]),
         (id: "sensor_name", name: [sensor_name]),
@@ -64,6 +66,7 @@
       id: "mc_processes",
       constellation: "mc",
       title: [mc_processes],
+      level: 1,
       order: 1,
       columns: (
         (id: "process_id", name: [process_id]),
@@ -74,7 +77,8 @@
       id: "mc_machines",
       constellation: "mc",
       title: [mc_machines],
-      order: 2,
+      level: 2,
+      order: 1,
       columns: (
         (id: "machine_id", name: [machine_id]),
         (id: "process_id", name: [process_id]),
@@ -82,10 +86,35 @@
       ),
     ),
     (
+      id: "mc_machine_registry",
+      constellation: "mc",
+      title: [mc_machine_registry],
+      level: 2,
+      order: 2,
+      columns: (
+        (id: "registry_id", name: [registry_id]),
+        (id: "machine_id", name: [machine_id]),
+      ),
+    ),
+    (
+      id: "mc_machine_events",
+      constellation: "mc",
+      title: [mc_machine_events],
+      level: 3,
+      order: 1,
+      columns: (
+        (id: "event_id", name: [event_id]),
+        (id: "machine_id", name: [machine_id]),
+        (id: "process_id", name: [process_id]),
+        (id: "parent_event_id", name: [parent_event_id]),
+      ),
+    ),
+    (
       id: "qa_rules",
       constellation: "qa",
       title: [qa_rules],
-      order: 1,
+      level: 0,
+      order: 0,
       columns: (
         (id: "rule_id", name: [rule_id]),
         (id: "machine_id", name: [machine_id]),
@@ -95,6 +124,7 @@
       id: "hist_machine_samples",
       constellation: "hist",
       title: [hist_machine_samples],
+      level: 1,
       columns: (
         (id: "sample_id", name: [sample_id]),
         (id: "machine_id", name: [machine_id]),
@@ -119,6 +149,30 @@
       id: "mc_machines_rule_fk",
       source: (block: "mc_machines", row: "machine_id"),
       target: (block: "qa_rules", row: "machine_id"),
+      mode: "auto",
+    ),
+    (
+      id: "mc_registry_machine_fk",
+      source: (block: "mc_machine_registry", row: "machine_id"),
+      target: (block: "mc_machines", row: "machine_id"),
+      mode: "direct",
+    ),
+    (
+      id: "mc_events_machine_fk",
+      source: (block: "mc_machine_events", row: "machine_id"),
+      target: (block: "mc_machines", row: "machine_id"),
+      mode: "auto",
+    ),
+    (
+      id: "mc_events_process_fk",
+      source: (block: "mc_machine_events", row: "process_id"),
+      target: (block: "mc_processes", row: "process_id"),
+      mode: "auto",
+    ),
+    (
+      id: "mc_events_parent_fk",
+      source: (block: "mc_machine_events", row: "parent_event_id"),
+      target: (block: "mc_machine_events", row: "event_id"),
       mode: "auto",
     ),
     (

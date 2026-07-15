@@ -17,6 +17,10 @@
   field(item, "title", default: field(item, "name", default: fallback))
 }
 
+#let positive_integer(value) = {
+  type(value) == int and value > 0
+}
+
 #let content_to_str(value) = {
   if value == none {
     return ""
@@ -141,10 +145,12 @@
           row: row.id,
           side: side,
           constellation: block_data.constellation,
-          level: block_data.constellation_level,
+          constellation_level: block_data.constellation_level,
+          block_level: block_data.block_level,
           order: (
             constellation: block_data.constellation_order,
-            block: block_data.order,
+            block_level: block_data.block_level,
+            block: block_data.block_order,
             row: row.order,
           ),
         ))
@@ -155,7 +161,9 @@
   anchors
 }
 
-#let normalize_constellations(constellations) = {
+#import "color_schemes.typ": resolve_color_schema, color_theme_for
+
+#let normalize_constellations(constellations, color_schema) = {
   let normalized = ()
 
   for index in range(0, constellations.len()) {
@@ -163,6 +171,7 @@
     let id = field(constellation, "id", default: "constellation-" + str(index + 1))
     let level = field(constellation, "level", default: 1)
     let order = field(constellation, "order", default: index + 1)
+    let colors = color_theme_for(color_schema, index + 1)
 
     normalized.push((
       id: id,
@@ -174,6 +183,7 @@
         column: level,
         stack_order: order,
       ),
+      colors: colors,
       raw: constellation,
     ))
   }
@@ -206,8 +216,15 @@
     let id = field(block_data, "id", default: "block-" + str(index + 1))
     let constellation_id = field(block_data, "constellation", default: none)
     let constellation = constellation_by_id(constellations, constellation_id)
-    let block_order = field(block_data, "order", default: index + 1)
-    let level = if constellation == none { none } else { constellation.level }
+    let constellation_source_index = blocks
+      .slice(0, index)
+      .filter(candidate => field(candidate, "constellation", default: none) == constellation_id)
+      .len() + 1
+    let requested_block_level = field(block_data, "level", default: 1)
+    let requested_block_order = field(block_data, "order", default: constellation_source_index)
+    let block_level = if positive_integer(requested_block_level) { requested_block_level } else { 1 }
+    let block_order = if positive_integer(requested_block_order) { requested_block_order } else { constellation_source_index }
+    let constellation_level = if constellation == none { none } else { constellation.level }
     let constellation_order = if constellation == none { none } else { constellation.order }
 
     if constellation == none {
@@ -218,6 +235,32 @@
       ))
     }
 
+    if not positive_integer(requested_block_level) {
+      diagnostics.push(diagnostic(
+        "warning",
+        "invalid-block-level",
+        [Block #id uses invalid level #requested_block_level. Block level 1 was used.],
+      ))
+    }
+
+    if not positive_integer(requested_block_order) {
+      diagnostics.push(diagnostic(
+        "warning",
+        "invalid-block-order",
+        [Block #id uses invalid order #requested_block_order. Source order #constellation_source_index was used.],
+      ))
+    }
+
+    let duplicate = normalized.find(candidate => candidate.constellation == constellation_id and candidate.block_level == block_level and candidate.block_order == block_order)
+
+    if duplicate != none {
+      diagnostics.push(diagnostic(
+        "warning",
+        "duplicate-block-position",
+        [Blocks #duplicate.id and #id share constellation #constellation_id, block level #block_level, and order #block_order; source order will break the tie.],
+      ))
+    }
+
     let rows = normalize_rows(block_data, id)
 
     normalized.push((
@@ -225,15 +268,28 @@
       title: title_of(block_data, id),
       constellation: constellation_id,
       constellation_found: constellation != none,
-      constellation_level: level,
+      constellation_level: constellation_level,
       constellation_order: constellation_order,
+      block_level: block_level,
+      block_order: block_order,
+      level: block_level,
       order: block_order,
       source_index: index + 1,
+      constellation_source_index: constellation_source_index,
       rows: rows,
-      anchors: collect_row_anchors(((id: id, constellation: constellation_id, constellation_level: level, constellation_order: constellation_order, order: block_order, rows: rows),)),
+      anchors: collect_row_anchors(((
+        id: id,
+        constellation: constellation_id,
+        constellation_level: constellation_level,
+        constellation_order: constellation_order,
+        block_level: block_level,
+        block_order: block_order,
+        rows: rows,
+      ),)),
       layout: (
-        column: level,
+        constellation_column: constellation_level,
         constellation_stack_order: constellation_order,
+        column: block_level,
         block_stack_order: block_order,
       ),
       raw: block_data,
@@ -241,9 +297,9 @@
   }
 
   let sorted = normalized.sorted(key: block_data => {
-    let level = if block_data.constellation_level == none { 9999 } else { block_data.constellation_level }
+    let constellation_level = if block_data.constellation_level == none { 9999 } else { block_data.constellation_level }
     let constellation_order = if block_data.constellation_order == none { 9999 } else { block_data.constellation_order }
-    level * 1000000 + constellation_order * 1000 + block_data.order
+    constellation_level * 1000000000 + constellation_order * 1000000 + block_data.block_level * 10000 + block_data.block_order * 100 + block_data.source_index
   })
 
   (blocks: sorted, diagnostics: diagnostics)
@@ -275,10 +331,43 @@
   }
 }
 
-#let resolve_link_mode(requested_mode, relation) = {
+#let block_link_relation(source_block_id, target_block_id, source_level, target_level) = {
+  if source_block_id == none or target_block_id == none or source_level == none or target_level == none {
+    return "invalid"
+  }
+
+  if source_block_id == target_block_id {
+    return "same-block"
+  }
+
+  if source_level == target_level {
+    return "same-level"
+  }
+
+  let distance = calc.abs(source_level - target_level)
+  if distance == 1 {
+    "adjacent-level"
+  } else {
+    "skip-level"
+  }
+}
+
+#let link_routing_scope(source_block_id, target_block_id, source_constellation, target_constellation) = {
+  if source_block_id == none or target_block_id == none or source_constellation == none or target_constellation == none {
+    "invalid"
+  } else if source_block_id == target_block_id {
+    "same-block"
+  } else if source_constellation == target_constellation {
+    "internal"
+  } else {
+    "cross-constellation"
+  }
+}
+
+#let resolve_scoped_link_mode(requested_mode, routing_scope, constellation_relation, block_relation) = {
   let supported_modes = ("auto", "direct", "link-block")
 
-  if not supported_modes.contains(requested_mode) or relation == "invalid" {
+  if not supported_modes.contains(requested_mode) or routing_scope == "invalid" or constellation_relation == "invalid" or block_relation == "invalid" {
     return "invalid"
   }
 
@@ -286,11 +375,17 @@
     return requested_mode
   }
 
-  if relation == "internal" or relation == "adjacent-level" {
-    "direct"
+  if routing_scope == "cross-constellation" {
+    if constellation_relation == "adjacent-level" { "direct" } else { "link-block" }
+  } else if routing_scope == "internal" {
+    if block_relation == "adjacent-level" { "direct" } else { "link-block" }
   } else {
     "link-block"
   }
+}
+
+#let direct_route_supported(mode, routing_scope, constellation_relation, block_relation) = {
+  mode != "direct" or (routing_scope == "cross-constellation" and constellation_relation == "adjacent-level") or (routing_scope == "internal" and block_relation == "adjacent-level")
 }
 
 #let normalize_links(links, blocks, constellations) = {
@@ -362,10 +457,41 @@
 
     let source_constellation = if source_block == none { none } else { source_block.constellation }
     let target_constellation = if target_block == none { none } else { target_block.constellation }
-    let source_level = if source_block == none { none } else { source_block.constellation_level }
-    let target_level = if target_block == none { none } else { target_block.constellation_level }
-    let relation = link_relation(source_constellation, target_constellation, source_level, target_level)
-    let final_mode = resolve_link_mode(requested_mode, relation)
+    let source_constellation_level = if source_block == none { none } else { source_block.constellation_level }
+    let target_constellation_level = if target_block == none { none } else { target_block.constellation_level }
+    let source_block_level = if source_block == none { none } else { source_block.block_level }
+    let target_block_level = if target_block == none { none } else { target_block.block_level }
+    let endpoints_valid = source_block != none and target_block != none and source_row != none and target_row != none
+    let constellation_relation = if endpoints_valid {
+      link_relation(source_constellation, target_constellation, source_constellation_level, target_constellation_level)
+    } else {
+      "invalid"
+    }
+    let block_relation = if endpoints_valid and source_constellation == target_constellation {
+      block_link_relation(source_block_id, target_block_id, source_block_level, target_block_level)
+    } else if endpoints_valid {
+      "cross-constellation"
+    } else {
+      "invalid"
+    }
+    let routing_scope = if endpoints_valid {
+      link_routing_scope(source_block_id, target_block_id, source_constellation, target_constellation)
+    } else {
+      "invalid"
+    }
+    let routing_relation = if routing_scope == "cross-constellation" { constellation_relation } else { block_relation }
+    let final_mode = resolve_scoped_link_mode(requested_mode, routing_scope, constellation_relation, block_relation)
+    let route_supported = direct_route_supported(final_mode, routing_scope, constellation_relation, block_relation)
+    let render_mode = if final_mode == "direct" and not route_supported { "link-block" } else { final_mode }
+
+    if final_mode == "direct" and not route_supported {
+      diagnostics.push(diagnostic(
+        "warning",
+        "direct-route-fallback",
+        [Link #id requested a direct #routing_scope/#routing_relation route that Stage 8 cannot draw safely; it renders as a link-block fallback.],
+        link: id,
+      ))
+    }
 
     normalized.push((
       id: id,
@@ -373,20 +499,30 @@
         block: source_block_id,
         row: source_row_id,
         constellation: source_constellation,
-        level: source_level,
+        constellation_level: source_constellation_level,
+        block_level: source_block_level,
+        level: source_constellation_level,
         anchor: source_anchor,
       ),
       target: (
         block: target_block_id,
         row: target_row_id,
         constellation: target_constellation,
-        level: target_level,
+        constellation_level: target_constellation_level,
+        block_level: target_block_level,
+        level: target_constellation_level,
         anchor: target_anchor,
       ),
       requested_mode: requested_mode,
-      relation: relation,
+      constellation_relation: constellation_relation,
+      block_relation: block_relation,
+      routing_scope: routing_scope,
+      routing_relation: routing_relation,
+      relation: routing_relation,
       mode: final_mode,
-      valid: relation != "invalid" and supported_modes.contains(requested_mode),
+      render_mode: render_mode,
+      route_supported: route_supported,
+      valid: endpoints_valid and routing_scope != "invalid" and supported_modes.contains(requested_mode),
       source_index: index + 1,
       raw: link,
     ))
@@ -407,8 +543,26 @@
   levels.sorted()
 }
 
-#let normalize_recipe(recipe) = {
-  let constellations = normalize_constellations(field(recipe, "constellations", default: ()))
+#let resolved_block_levels(constellations, blocks) = {
+  let result = ()
+
+  for constellation in constellations {
+    let levels = ()
+    for block_data in blocks.filter(block_data => block_data.constellation == constellation.id) {
+      if not levels.contains(block_data.block_level) {
+        levels.push(block_data.block_level)
+      }
+    }
+    result.push((constellation: constellation.id, levels: levels.sorted()))
+  }
+
+  result
+}
+
+#let normalize_recipe(recipe, custom_color_schemas: ()) = {
+  let metadata = field(recipe, "metadata", default: (:))
+  let color_schema = resolve_color_schema(metadata, custom_schemas: custom_color_schemas)
+  let constellations = normalize_constellations(field(recipe, "constellations", default: ()), color_schema)
   let block_result = normalize_blocks(field(recipe, "blocks", default: ()), constellations)
   let link_result = normalize_links(field(recipe, "links", default: ()), block_result.blocks, constellations)
   let anchors = collect_row_anchors(block_result.blocks)
@@ -423,7 +577,8 @@
   }
 
   (
-    metadata: field(recipe, "metadata", default: (:)),
+    metadata: metadata,
+    color_schema: color_schema,
     constellations: constellations,
     blocks: block_result.blocks,
     links: link_result.links,
@@ -431,6 +586,7 @@
     diagnostics: diagnostics,
     layout: (
       levels: resolved_levels(constellations),
+      block_levels: resolved_block_levels(constellations, block_result.blocks),
       direction: "parents-left-children-right",
     ),
   )

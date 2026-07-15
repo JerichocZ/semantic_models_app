@@ -140,6 +140,33 @@ Suggested automatic order:
 
 For the first implementation, manual order is preferred.
 
+## 4.1 Block Alignment Inside a Constellation
+
+Each constellation contains a second, independent horizontal alignment
+domain. Blocks use their own `level` and `order` values; these values do not
+change the constellation's level or order.
+
+```text
+Block level 1       Block level 2       Block level 3
+parents             children            deeper children
+```
+
+Rules:
+
+1. Lower block levels render to the left of higher block levels.
+2. Blocks sharing a level stack vertically using block `order`.
+3. Missing block level defaults to level 1.
+4. Missing block order and duplicate positions use source order as a
+   deterministic fallback or tie-breaker.
+5. Direct internal references between adjacent block levels use routing pipes
+   inside the constellation.
+6. Internal same-level, skip-level, and same-block references use link-blocks
+   by default.
+
+Constellation and block levels must remain distinct in the normalized model
+and in link endpoints. Cross-constellation arrows use constellation levels;
+internal arrows use block levels.
+
 ---
 
 # 5. Constellation Dependency Rules
@@ -256,12 +283,15 @@ The renderer decides the mode using simple rules.
 Suggested `auto` behavior:
 
 ```text
-same constellation                 -> direct
-adjacent constellation levels       -> direct
-same-level constellations           -> link-block
-skip-level constellation reference  -> link-block
-far reference                       -> link-block
+different constellations, adjacent constellation levels -> direct
+different constellations, same or skipped levels         -> link-block
+same constellation, adjacent block levels                -> direct
+same constellation, same or skipped block levels         -> link-block
+same block                                                 -> link-block
 ```
+
+This replaces the earlier coarse `same constellation -> direct` rule. The
+renderer should always classify the routing domain before resolving `auto`.
 
 The user should be able to override the automatic choice by setting the link mode explicitly.
 
@@ -314,25 +344,13 @@ Each constellation contains one or more blocks.
 
 For database diagrams, each block usually represents a table.
 
-Inside a constellation, blocks should also follow a parent-to-child logic when possible.
+Inside a constellation, blocks follow the same parent-left / child-right logic
+as constellations. Block `level` selects a horizontal block column and block
+`order` selects the vertical position within that column.
 
-Recommended rule:
-
-```text
-Referenced blocks appear above or to the left of the blocks that reference them.
-```
-
-For the first implementation, block layout inside a constellation may use a simple vertical stack.
-
-Suggested block order:
-
-1. Blocks with no internal dependencies.
-2. Blocks referenced by other blocks.
-3. Blocks that depend on previous blocks.
-4. Blocks with many external references.
-5. Fallback: source file order.
-
-Manual block order should be supported.
+Referenced blocks should normally use a lower block level than the blocks that
+reference them. Manual block level and order have priority; missing values use
+the documented deterministic fallbacks.
 
 Example:
 
@@ -340,15 +358,18 @@ Example:
 blocks:
   - id: mc_processes
     constellation: mc
+    level: 1
     order: 1
 
   - id: mc_machines
     constellation: mc
-    order: 2
+    level: 2
+    order: 1
 
   - id: mc_registries
     constellation: mc
-    order: 3
+    level: 2
+    order: 2
 ```
 
 ---
@@ -362,7 +383,7 @@ Rules:
 1. The page is divided into horizontal columns.
 2. Each column represents one constellation level.
 3. Constellations in the same level are stacked vertically.
-4. Blocks inside each constellation are stacked using their block order.
+4. Blocks inside each constellation use nested block-level columns and stack by block order within each column.
 5. Direct arrows are preferred only for nearby references.
 6. Link-blocks are preferred for far, same-level, or skip-level references.
 7. The page size should fit the content plus margins.
@@ -381,7 +402,7 @@ A constellation page focuses on one constellation and its internal blocks.
 Rules:
 
 1. The selected constellation is rendered as the main content.
-2. Internal links may use direct arrows.
+2. Internal adjacent-block-level links may use direct arrows through inner pipes.
 3. External references should usually use link-blocks.
 4. The legend should only include abbreviations used on that page.
 5. Author information should appear in a fixed area.
@@ -421,11 +442,13 @@ For blocks:
 blocks:
   - id: mc_processes
     constellation: mc
+    level: 1
     order: 1
 
   - id: mc_machines
     constellation: mc
-    order: 2
+    level: 2
+    order: 1
 ```
 
 Manual layout should take priority over automatic layout.
@@ -509,7 +532,9 @@ same-level references -> link-blocks
 Default block behavior:
 
 ```text
-blocks are stacked inside their constellation
+lower block levels -> left
+higher block levels -> right
+same block level -> vertical stack
 manual order is preferred
 source file order is fallback
 ```
@@ -517,11 +542,12 @@ source file order is fallback
 Default link behavior:
 
 ```text
-same constellation -> direct
-adjacent levels -> direct
-skip-level -> link-block
-same-level -> link-block
-user override -> always respected
+cross-constellation adjacent levels -> direct through outer pipe
+internal adjacent block levels -> direct through inner pipe
+cross-constellation or internal skip-level -> link-block
+cross-constellation or internal same-level -> link-block
+same-block -> link-block
+unsupported explicit direct -> preserved in contract with diagnostic render fallback
 ```
 
 The purpose of these rules is to create readable diagrams that scale to many blocks and many references without becoming visually chaotic.

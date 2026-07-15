@@ -78,23 +78,21 @@ diagram:
   title: Vibration database model
   type: database
   author: Javier Soler
+  color_scheme: tidal
 
 constellations:
   - id: lo
     name: Locations
-    color: orange
 
   - id: mc
     name: Maintenance Core
-    color: blue
 
 blocks:
   - id: mc_machines
     constellation: mc
     title: mc_machines
-    layout:
-      column: 1
-      order: 2
+    level: 2
+    order: 2
     columns:
       - id: machine_id
         name: machine_id
@@ -119,5 +117,89 @@ links:
     mode: auto
 ```
 
-# Typst
+### Block alignment
 
+Alignment has two nested levels. Constellation `level` and `order` place the
+constellation on the general page. Block `level` and `order` place a block
+inside its own constellation.
+
+Lower block levels render on the left and higher block levels render on the
+right. Blocks that share a level stack vertically by `order`; source order is
+the deterministic fallback and tie-breaker. A missing block `level` defaults
+to `1`.
+
+```typst
+#let blocks = (
+  (
+    id: "types_locations",
+    constellation: "lo",
+    level: 1,
+    order: 1,
+    // ...
+  ),
+  (
+    id: "locations",
+    constellation: "lo",
+    level: 2,
+    order: 1,
+    // ...
+  ),
+)
+```
+
+Direct links use two routing domains:
+
+* links between different constellations use the outer constellation pipes
+* links inside one constellation use pipes between adjacent block levels
+
+For `mode: "auto"`, adjacent internal block levels resolve to `direct`.
+Internal same-level, skip-level, and same-block references resolve to
+`link-block`. Cross-constellation links keep the constellation-level rules:
+adjacent levels are direct, while same-level and skip-level references use
+link-blocks.
+
+An explicit `direct` request is preserved in the resolved contract. If its
+same-level, skip-level, or same-block route is not safely supported, the
+renderer reports a diagnostic and displays a link-block fallback.
+
+### Color schemas
+
+Constellations do not define colors individually. The selected color schema
+assigns a color matrix to constellations in their source order and uses the
+same matrix entry for the blocks inside each constellation.
+
+The preset includes two schemas: `ember` and `tidal`. Select one in
+`src/<diagram>/data/metadata.typ`:
+
+```typst
+#let diagram_metadata = (
+  // Other metadata fields...
+  color_scheme: "tidal",
+)
+```
+
+If `color_scheme` is omitted, `default_color_scheme` in
+`src/<diagram>/preambles/settings.typ` is used.
+
+To add a diagram-specific schema, add an entry to
+`src/<diagram>/data/color_schemas.typ` and select its `id` in metadata. A
+schema must provide a `matrix`; its entries are repeated when the diagram has
+more constellations than matrix entries.
+
+```typst
+#let custom_color_schemas = (
+  (
+    id: "forest",
+    label: [Forest],
+    matrix: (
+      (
+        accent: rgb("#286a45"),
+        fill: rgb("#edf8f0"),
+        block_accent: rgb("#3e825a"),
+        block_fill: rgb("#f9fdf9"),
+      ),
+      // Add more matrix entries for additional distinct constellation colors.
+    ),
+  ),
+)
+```

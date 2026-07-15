@@ -505,17 +505,196 @@ Please finish by reporting:
 * known limitations
 * whether any Typst/CeTZ limitations were found
 
+#### Stage 8 — Implement Nested Block Alignment and Internal Link Routing
 
-#### Stage 8 — User interaction rework
-Currently, the user must modify the `<project>/data/*` files to add new constelations, blocks and other stuff. This is kinda complex and confusing.
+Please read `alignment.md` and study the current constellation alignment, direct-pipe, row-anchor, and link-block implementations before coding.
+
+This stage extends the existing system; it must not replace the working constellation layout or create a separate incompatible renderer.
 
 ##### Goal
-Enhance user interaction with the diagrams. The main idea is user to define diagram type, constelations and blocks from a single file, `main.typ`.
 
-##### Requirements
+Add a second alignment layer inside every constellation.
 
+The general page already places constellations in horizontal columns using constellation `level` and stacks them using constellation `order`. Blocks must now follow the same idea inside their own constellation:
 
+* lower block levels are placed on the left
+* higher block levels are placed on the right
+* blocks in the same level are stacked vertically by block order
+* referenced or parent blocks should normally be to the left of referencing or child blocks
+* direct links between block columns use reserved routing pipes between those columns
+* link-block references continue to render beside their source and target rows
 
+The result is a nested layout:
+
+```text
+General diagram
+  constellation level columns
+    constellation
+      block level columns
+        ordered blocks
+          ordered rows and stable anchors
+```
+
+For example, one constellation may contain:
+
+```text
+Block level 1           pipe           Block level 2
+[types_locations]       |              [locations]
+        type_id <--------+-------------- type_id
+```
+
+##### Alignment Contract
+
+Keep the author-facing block fields consistent with the current data files:
+
+```typst
+(
+  id: "locations",
+  constellation: "lo",
+  level: 2,
+  order: 1,
+  // ...
+)
+```
+
+The normalized model must distinguish the two alignment layers clearly. Do not use one ambiguous resolved `level` for both meanings. A normalized block and link endpoint must make it possible to read, directly or through an explicit nested structure:
+
+* `constellation_level`
+* `constellation_order`
+* `block_level`
+* `block_order`
+* block source index for deterministic tie-breaking
+
+The exact normalized field names may follow the current conventions, but the distinction must be explicit and documented.
+
+Resolve block layout independently inside each constellation:
+
+1. Use the block's manual `level` when present.
+2. Default a missing block level to `1`.
+3. Use the block's manual `order` when present.
+4. Use source order as the fallback and final tie-breaker.
+5. Scope block level and order to the block's own constellation. Values in one constellation must not affect another constellation.
+6. Produce deterministic output when two blocks have the same level and order.
+
+Validate that block levels and orders are positive integers. Invalid values and duplicate `(constellation, block level, block order)` positions should produce readable diagnostics and a deterministic fallback instead of breaking the diagram.
+
+##### Link Classification and Mode Resolution
+
+Classify every valid link by its routing scope before choosing anchors or pipes:
+
+* `cross-constellation`: source and target blocks belong to different constellations; route using constellation levels and the existing outer pipes
+* `internal`: source and target are different blocks in the same constellation; route using block levels and the new inner pipes
+* `same-block`: source and target rows belong to the same block; no between-column pipe exists
+
+For internal links, also resolve the block relation:
+
+* adjacent block levels
+* same block level
+* skip block level
+* same block
+* invalid or unresolved
+
+Explicit `direct` and `link-block` requests remain user overrides. For `auto`, use the most local available alignment domain:
+
+* different constellations -> keep the existing constellation-level rules
+* same constellation and adjacent block levels -> `direct`
+* same constellation and same block level -> `link-block`
+* same constellation and skip block level -> `link-block`
+* same block -> `link-block`
+* unresolved link -> diagnostic warning
+
+This intentionally refines the earlier coarse rule `same constellation -> direct`. Now that block levels exist, only an adjacent internal block relation is automatically safe for a direct route. Document this change so later stages do not restore the old behavior accidentally.
+
+##### Implement
+
+1. Extend block normalization with resolved block levels, block orders, and per-constellation block-level lists.
+2. Extend normalized link endpoints with the block layout information required for internal routing.
+3. Add a routing-scope or routing-domain result so the renderer does not infer internal versus external routing repeatedly.
+4. Refactor shared pipe calculations where practical so outer constellation pipes and inner block pipes use the same deterministic lane-sizing rules without sharing labels or coordinates accidentally.
+5. Give every inner pipe and overlay a scope-qualified identity that includes the page scope and constellation id. Anchor and pipe queries from two constellations must never collide.
+6. Replace the single vertical block stack in `constellation_container` with a block-column grid:
+
+   * one column for each resolved block level
+   * one vertical stack per block level
+   * blocks sorted by resolved block order and source index
+   * configurable block-column gap
+   * a reserved inner pipe slot between adjacent block columns when direct internal links need it
+
+7. Compute each constellation's width from its block columns, inner gaps, inner pipe widths, link-block clearances, and constellation padding. Do not assume every constellation still has `layout_column_width`.
+8. Render internal adjacent-level direct links from row anchors through the appropriate inner pipe using orthogonal segments and a target arrowhead, following the current outer-pipe visual style.
+9. Choose internal source and target anchor sides from relative block levels. For the usual child-right to parent-left reference, use the child row's left anchor and the parent row's right anchor.
+10. Keep cross-constellation direct links on the existing outer pipes. Their anchor choice must use constellation levels, not block levels.
+11. Keep link-block badges, reverse target badges, PDF jumps, outer target ports, and anchor debug mode working in both the general and constellation pages.
+12. Add settings for at least:
+
+    * block column width
+    * block column gap
+    * inner direct-pipe inset
+    * inner direct-pipe lane gap
+
+    Reuse current settings when the visual meaning is truly the same; do not duplicate constants only to rename them.
+
+13. Update the example data to exercise the new behavior. Include at least:
+
+    * three block levels in one constellation
+    * two blocks sharing a level with different orders
+    * one adjacent-level `auto` link that becomes `direct`
+    * one same-level `auto` link that becomes `link-block`
+    * one skip-level `auto` link that becomes `link-block`
+    * one same-block row reference rendered as a link-block
+    * one cross-constellation direct link to prove the outer routing still works
+
+14. Update the alignment contract report and README authoring example so block `level` and `order`, their fallbacks, and the refined `auto` rules are visible to users.
+
+##### Fallback Behavior
+
+* If a block has no level, use block level `1`.
+* If a block has no order, use its source order within deterministic sorting.
+* If a block has an invalid level or order, emit a diagnostic and place it using the documented fallback.
+* If an internal direct link cannot find either row anchor or its inner pipe, do not crash or draw from an unrelated queried label. Emit a diagnostic and render that link as a link-block fallback when both endpoints are otherwise valid.
+* If an explicit `direct` link is same-level, skip-level, or same-block and that route is not supported safely in this stage, retain the requested mode in the normalized data, report that rendering fell back, and show a link-block. Do not silently rewrite the author's request.
+* If only one block level exists, render a normal single block column without an empty pipe or unnecessary horizontal gap.
+* An empty constellation must keep its current readable empty state.
+
+##### Non-goals
+
+* Do not automatically infer block levels from the link graph.
+* Do not change how constellation levels or constellation orders are authored.
+* Do not redesign the block table or row-anchor identity scheme unless a small compatible extension is required.
+* Do not implement crossing minimization, obstacle avoidance, or an advanced graph-layout algorithm.
+* Do not implement direct routing for internal same-level, skip-level, or same-block links in this stage; use the explicit diagnostic fallback described above.
+* Do not complete the still-pending outer skip-level direct-routing work as an unrelated side effect.
+* Do not implement page splitting.
+* Do not remove link-block support in favor of arrows.
+
+##### Acceptance Criteria
+
+At the end of this stage:
+
+1. Blocks render in horizontal level columns inside each constellation.
+2. Blocks sharing a level stack vertically in deterministic manual order.
+3. Missing block level and order values use the documented fallbacks.
+4. The resolved contract clearly distinguishes constellation layout from block layout.
+5. Internal adjacent-level `auto` links render through inner direct-routing pipes.
+6. Internal same-level, skip-level, and same-block `auto` links render as link-blocks.
+7. Explicit link modes remain visible in the normalized model, including when the renderer must use a diagnostic fallback.
+8. Inner pipe labels and row-anchor queries do not collide between constellations or between the general and constellation pages.
+9. Constellation containers expand to fit their block columns, routing pipes, link-blocks, and arrow ports without clipping.
+10. Existing cross-constellation arrows still route through outer constellation pipes.
+11. Direct arrows and link-blocks coexist inside one constellation and across the general page.
+12. The general page and at least one constellation page compile successfully.
+13. A representative rendered page is visually inspected for block order, pipe placement, arrow direction, overlap, and clipping.
+14. Invalid block positions and missing anchors produce readable diagnostics without stopping the document build.
+
+Please finish by reporting:
+
+* files changed
+* normalized block-layout fields added
+* link routing scopes and `auto` rules implemented
+* inner layout and pipe functions added or generalized
+* example cases rendered
+* compile and visual verification performed
+* known limitations and the next direct-routing cases to implement
 
 
 ### Agents comments
@@ -527,6 +706,7 @@ Enhance user interaction with the diagrams. The main idea is user to define diag
 - 2026-07-10: Stage 5 completed. Added stable row anchor identities, source/target side conventions, visible row anchor markers, and a debug panel listing resolved link anchor pairs.
 - 2026-07-10: Stage 6 completed. Added source-side link-block rendering for resolved `link-block` links, plus explicit, same-level auto, and skip-level auto examples.
 - 2026-07-10: Stage 7 partially implemented. Adjacent-level direct links render between invisible external row ports through lane-sized routing pipes. Shared link-block clearances, filled arrowheads, conditional outer target ports, and configurable rounded corners prevent overlap. Same-constellation, skip-level direct routing, and missing-anchor reporting remain pending.
+- 2026-07-15: Stage 8 completed. Blocks now render in nested per-constellation level columns with deterministic orders, constellation-scoped inner pipes, refined internal `auto` modes, diagnostic link-block fallbacks, and preserved outer routing.
 #### Information
 The `src/.presentations_preset` folder uses a simple and useful split: `main.typ` assembles the final document, while `preambles/` contains settings, page style, low-level elements, layout builders, and common helpers. For diagrams, the same idea should stay, but each diagram also needs a clear data layer because blocks, constellations, links, and legends are the main user-authored content.
 
@@ -573,10 +753,46 @@ Recommended authoring flow for later stages:
 3. `main.typ` imports data and calls the diagram layouts.
 4. Files in `preambles/` are changed only when the diagram type, visual system, or output behavior changes.
 
+Stage 8 adds a nested alignment domain inside each constellation. Normalized blocks expose distinct constellation and block levels/orders, and normalized links expose `routing_scope`, `routing_relation`, final `mode`, and effective `render_mode`. Cross-constellation direct links continue to use the outer pipes. Adjacent internal block levels use constellation-scoped inner pipes; internal same-level, skip-level, and same-block `auto` links use link-blocks. Unsupported explicit direct routes remain `direct` in the contract but receive a diagnostic and `link-block` render fallback.
+
+## User interaction enhancing
+### Context
+The app is pretty advanced. Now we want to enhance the user interaction.
+
+### Activities
+#### Stage 1: colors schemas
+
+##### Goal
+Currently, the user must define each constellation giving colors as parameters. I want to change this for a preset color schemas system.
+
+It is, we will define several base colors schemas and the posibility of user to add new.
+
+Each color schema may be a matrix of colors such that constellations and blocks get colors from them. The user chooses the schema from the `metadata` definition or a settings file.
+
+##### Requirements
+Rework the current colors system to be compatible with our color schemas system.
+
+Add two preset schemas.
+
+Add to the `README.md/Instructions` how to add new schemas.
+
+### Agents comments
+#### Status
+- 2026-07-15: Stage 1 completed. Added the `ember` and `tidal` preset color schemas, metadata selection with a settings fallback, and diagram-local custom schema support.
+#### Information
+Color schemas use a cycling matrix in constellation source order. Every matrix entry supplies a constellation accent/fill plus a block accent/fill, so authors no longer assign `color` or `fill` for each constellation. The active schema is selected with `color_scheme` in `data/metadata.typ`; if it is omitted, `preambles/settings.typ` supplies `default_color_scheme`. New schemas go in `data/color_schemas.typ` and can intentionally override a preset when they use the same id.
 
 ## /*/*name/*/*
 ### Context
 ### Activities
+#### Stage 1
+##### Goal
+##### Requirements
+##### Implement
+##### Fallback behaviour
+##### Non-goals
+##### Aceptance criteria
+
 ### Agents comments
 #### Status
 #### Information

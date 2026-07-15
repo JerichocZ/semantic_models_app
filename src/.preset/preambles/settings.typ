@@ -8,6 +8,7 @@
 #let color_page = white
 #let color_block_section = luma(242)
 #let color_block_grid = luma(214)
+#let default_color_scheme = "ember"
 
 #let diagram_page_width = auto
 #let diagram_page_height = auto
@@ -35,9 +36,11 @@
 
 // Manual alignment layout =============================================
 #let layout_column_width = 350pt
-#let layout_column_gap = 30pt
-#let layout_constellation_gap = 18pt
+#let layout_column_gap = 10pt
+#let layout_constellation_gap = 10pt
 #let layout_block_gap = 8pt
+#let layout_block_column_width = layout_column_width
+#let layout_block_column_gap = 18pt
 #let layout_constellation_padding = 10pt
 #let layout_block_padding = 0pt
 #let layout_row_height = 20pt
@@ -62,7 +65,9 @@
 #let layout_link_block_arrow_width = 16pt
 #let layout_link_block_arrow_gap = 2pt
 #let layout_link_block_arrow_stroke = 0.65pt
-#let layout_link_block_marker_width = layout_link_block_badge_width + layout_link_block_arrow_gap + layout_link_block_arrow_width
+#let layout_link_block_marker_width = (
+  layout_link_block_badge_width + layout_link_block_arrow_gap + layout_link_block_arrow_width
+)
 #let layout_row_anchor_side_inset = (layout_link_block_side_width - layout_link_block_marker_width) / 2
 #let layout_row_port_gap = layout_link_block_side_gap + layout_row_anchor_side_inset
 #let layout_link_block_outer_port_gap = layout_row_port_gap
@@ -70,6 +75,8 @@
 #let layout_direct_pipe_inset = 6pt
 #let layout_direct_pipe_line_width = 0.75pt
 #let layout_direct_pipe_gutter = 4pt
+#let layout_inner_direct_pipe_inset = layout_direct_pipe_inset
+#let layout_inner_direct_pipe_gutter = layout_direct_pipe_gutter
 #let color_direct_arrow = color_sec
 #let layout_direct_arrow_stroke = layout_direct_pipe_line_width
 #let layout_direct_arrow_corner_radius = 4pt

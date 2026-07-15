@@ -78,8 +78,10 @@
   let cells = (
     header_cell([ID]),
     header_cell([Const.]),
-    header_cell([Level]),
-    header_cell([Order]),
+    header_cell([C. level]),
+    header_cell([C. order]),
+    header_cell([B. level]),
+    header_cell([B. order]),
     header_cell([Rows]),
   )
 
@@ -87,12 +89,14 @@
     cells.push(normal_cell(code_value(block_data.id)))
     cells.push(normal_cell(code_value(block_data.constellation)))
     cells.push(normal_cell(code_value(block_data.constellation_level)))
-    cells.push(normal_cell(code_value(block_data.order)))
+    cells.push(normal_cell(code_value(block_data.constellation_order)))
+    cells.push(normal_cell(code_value(block_data.block_level)))
+    cells.push(normal_cell(code_value(block_data.block_order)))
     cells.push(normal_cell(code_value(block_data.rows.len())))
   }
 
   table(
-    columns: (112pt, 48pt, 42pt, 42pt, 42pt),
+    columns: (112pt, 48pt, 48pt, 48pt, 48pt, 48pt, 42pt),
     stroke: (paint: color_block_grid, thickness: 0.35pt),
     ..cells,
   )
@@ -103,22 +107,26 @@
     header_cell([ID]),
     header_cell([Source]),
     header_cell([Target]),
+    header_cell([Scope]),
     header_cell([Relation]),
     header_cell([Req.]),
     header_cell([Mode]),
+    header_cell([Render]),
   )
 
   for link in resolved.links {
     cells.push(normal_cell(code_value(link.id)))
     cells.push(normal_cell(code_value(link.source.block + "." + link.source.row)))
     cells.push(normal_cell(code_value(link.target.block + "." + link.target.row)))
-    cells.push(normal_cell(code_value(link.relation)))
+    cells.push(normal_cell(code_value(link.routing_scope)))
+    cells.push(normal_cell(code_value(link.routing_relation)))
     cells.push(normal_cell(code_value(link.requested_mode)))
     cells.push(normal_cell(code_value(link.mode)))
+    cells.push(normal_cell(code_value(link.render_mode)))
   }
 
   table(
-    columns: (122pt, 120pt, 120pt, 72pt, 48pt, 58pt),
+    columns: (142pt, 158pt, 158pt, 102pt, 88pt, 50pt, 58pt, 58pt),
     stroke: (paint: color_block_grid, thickness: 0.35pt),
     ..cells,
   )
@@ -151,7 +159,7 @@
 }
 
 #let alignment_contract_report(resolved) = [
-  #block(width: 560pt)[
+  #block(width: 830pt)[
     #text(size: diagram_title_size, fill: color_main, weight: 700)[#resolved.metadata.title]
     #v(3pt)
     #text(size: diagram_subtitle_size, fill: color_muted)[#resolved.metadata.subtitle]

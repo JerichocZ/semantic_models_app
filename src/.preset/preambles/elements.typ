@@ -118,6 +118,14 @@
   label("direct-arrows:" + link_scope + ":origin")
 }
 
+#let inner_direct_pipe_label(link_scope, constellation_id, left_level, right_level) = {
+  label("inner-direct-pipe:" + link_scope + ":" + constellation_id + ":" + str(left_level) + "-" + str(right_level))
+}
+
+#let inner_direct_arrow_origin_label(link_scope, constellation_id) = {
+  label("inner-direct-arrows:" + link_scope + ":" + constellation_id + ":origin")
+}
+
 #let anchor_marker(side, anchor_id, visible: layout_show_anchor_debug, link_scope: "general") = {
   if anchor_id == none {
     return []
@@ -414,7 +422,7 @@
 
 #let link_blocks_for_source(links, block_id, row_id) = {
   links.filter(link => {
-    let is_link_block = link.mode == "link-block"
+    let is_link_block = link.render_mode == "link-block"
     let is_source_block = link.source.block == block_id
     let is_source_row = link.source.row == row_id
     is_link_block and is_source_block and is_source_row
@@ -423,7 +431,7 @@
 
 #let link_blocks_for_target(links, block_id, row_id) = {
   links.filter(link => {
-    let is_link_block = link.mode == "link-block"
+    let is_link_block = link.render_mode == "link-block"
     let is_target_block = link.target.block == block_id
     let is_target_row = link.target.row == row_id
     is_link_block and is_target_block and is_target_row
@@ -432,11 +440,25 @@
 
 #let direct_links_for_scope(resolved, visible_block_ids: none) = {
   resolved.links.filter(link_data => {
-    let is_direct = link_data.valid and link_data.mode == "direct"
+    let is_direct = link_data.valid and link_data.render_mode == "direct"
     let source_visible = visible_block_ids == none or visible_block_ids.contains(link_data.source.block)
     let target_visible = visible_block_ids == none or visible_block_ids.contains(link_data.target.block)
     is_direct and source_visible and target_visible
   })
+}
+
+#let outer_direct_links_for_scope(resolved, visible_block_ids: none) = {
+  direct_links_for_scope(resolved, visible_block_ids: visible_block_ids)
+    .filter(link_data => link_data.routing_scope == "cross-constellation")
+}
+
+#let inner_direct_links_for_constellation(
+  resolved,
+  constellation_id,
+  visible_block_ids: none,
+) = {
+  direct_links_for_scope(resolved, visible_block_ids: visible_block_ids)
+    .filter(link_data => link_data.routing_scope == "internal" and link_data.source.constellation == constellation_id and link_data.target.constellation == constellation_id)
 }
 
 #let direct_pipe_links_for_levels(
@@ -445,9 +467,9 @@
   right_level,
   visible_block_ids: none,
 ) = {
-  direct_links_for_scope(resolved, visible_block_ids: visible_block_ids).filter(link_data => {
-    let source_level = link_data.source.level
-    let target_level = link_data.target.level
+  outer_direct_links_for_scope(resolved, visible_block_ids: visible_block_ids).filter(link_data => {
+    let source_level = link_data.source.constellation_level
+    let target_level = link_data.target.constellation_level
 
     (source_level != none and target_level != none) and (
       (source_level <= left_level and target_level >= right_level) or
@@ -456,11 +478,15 @@
   })
 }
 
-#let direct_pipe_width(line_count) = {
+#let direct_pipe_width(
+  line_count,
+  inset: layout_direct_pipe_inset,
+  gutter: layout_direct_pipe_gutter,
+) = {
   if line_count == 0 {
     0pt
   } else {
-    layout_direct_pipe_inset * 2 + layout_direct_pipe_line_width * line_count + layout_direct_pipe_gutter * (line_count - 1)
+    inset * 2 + layout_direct_pipe_line_width * line_count + gutter * (line_count - 1)
   }
 }
 
@@ -509,9 +535,89 @@
   #direct_pipe_label(link_scope, pipe.left_level, pipe.right_level)
 ]
 
+#let inner_direct_pipe_links_for_levels(
+  resolved,
+  constellation_id,
+  left_level,
+  right_level,
+  visible_block_ids: none,
+) = {
+  inner_direct_links_for_constellation(
+    resolved,
+    constellation_id,
+    visible_block_ids: visible_block_ids,
+  ).filter(link_data => {
+    let source_level = link_data.source.block_level
+    let target_level = link_data.target.block_level
+    (source_level == left_level and target_level == right_level) or (target_level == left_level and source_level == right_level)
+  })
+}
+
+#let inner_direct_pipe_between_levels(
+  resolved,
+  constellation_id,
+  left_level,
+  right_level,
+  visible_block_ids: none,
+) = {
+  let links = inner_direct_pipe_links_for_levels(
+    resolved,
+    constellation_id,
+    left_level,
+    right_level,
+    visible_block_ids: visible_block_ids,
+  )
+
+  (
+    constellation: constellation_id,
+    left_level: left_level,
+    right_level: right_level,
+    links: links,
+    line_count: links.len(),
+    width: direct_pipe_width(
+      links.len(),
+      inset: layout_inner_direct_pipe_inset,
+      gutter: layout_inner_direct_pipe_gutter,
+    ),
+  )
+}
+
+#let inner_direct_pipe_total_width(
+  resolved,
+  constellation_id,
+  levels,
+  visible_block_ids: none,
+) = {
+  let width = 0pt
+
+  if levels.len() > 1 {
+    for index in range(0, levels.len() - 1) {
+      width += inner_direct_pipe_between_levels(
+        resolved,
+        constellation_id,
+        levels.at(index),
+        levels.at(index + 1),
+        visible_block_ids: visible_block_ids,
+      ).width
+    }
+  }
+
+  width
+}
+
+#let inner_direct_pipe_slot(pipe, link_scope: "general") = [
+  #box(width: pipe.width, height: 0pt)[]
+  #inner_direct_pipe_label(
+    link_scope,
+    pipe.constellation,
+    pipe.left_level,
+    pipe.right_level,
+  )
+]
+
 #let direct_anchor_sides(link_data) = {
-  let source_level = link_data.source.level
-  let target_level = link_data.target.level
+  let source_level = link_data.source.constellation_level
+  let target_level = link_data.target.constellation_level
 
   if source_level != none and target_level != none and source_level < target_level {
     (source: "right", target: "left")
@@ -524,7 +630,7 @@
 
 #let target_has_right_link_block(resolved, endpoint) = {
   resolved.links.find(link_data => {
-    link_data.mode == "link-block" and link_data.target.block == endpoint.block and link_data.target.row == endpoint.row
+    link_data.render_mode == "link-block" and link_data.target.block == endpoint.block and link_data.target.row == endpoint.row
   }) != none
 }
 
@@ -546,7 +652,7 @@
   if constellation == none {
     color_direct_arrow
   } else {
-    field(constellation.raw, "color", default: color_direct_arrow)
+    constellation.colors.accent
   }
 }
 
@@ -562,14 +668,20 @@
   lane_index
 }
 
-#let direct_arrow_segments(resolved, direct_links, link_scope, origin) = {
+#let direct_arrow_segments(
+  resolved,
+  direct_links,
+  link_scope,
+  origin,
+  visible_block_ids: none,
+) = {
   let segments = ()
   let missing = ()
   let max_y = 0pt
 
   for link_data in direct_links {
-    let source_level = link_data.source.level
-    let target_level = link_data.target.level
+    let source_level = link_data.source.constellation_level
+    let target_level = link_data.target.constellation_level
 
     if source_level == none or target_level == none or source_level == target_level {
       continue
@@ -577,7 +689,12 @@
 
     let left_level = if source_level < target_level { source_level } else { target_level }
     let right_level = if source_level < target_level { target_level } else { source_level }
-    let pipe = direct_pipe_between_levels(resolved, left_level, right_level)
+    let pipe = direct_pipe_between_levels(
+      resolved,
+      left_level,
+      right_level,
+      visible_block_ids: visible_block_ids,
+    )
     let lane_index = direct_pipe_lane_index(pipe.links, link_data.id)
     let sides = direct_anchor_sides(link_data)
     let source_anchor = direct_anchor_id(resolved, link_data.source, sides.source, role: "source")
@@ -623,28 +740,8 @@
   )
 }
 
-#let direct_arrows_overlay(
-  resolved,
-  visible_block_ids: none,
-  link_scope: "general",
-  width: 100pt,
-) = context {
-  let direct_links = direct_links_for_scope(resolved, visible_block_ids: visible_block_ids)
-  let origin_hits = query(direct_arrow_origin_label(link_scope))
-
-  if direct_links.len() == 0 or origin_hits.len() == 0 {
-    return []
-  }
-
-  let origin = origin_hits.first().location().position()
-  let result = direct_arrow_segments(resolved, direct_links, link_scope, origin)
-
-  if result.segments.len() == 0 {
-    return []
-  }
-
-  let canvas_height = result.max_y + layout_direct_arrow_canvas_padding
-
+#let direct_segments_canvas(segments, width, max_y) = {
+  let canvas_height = max_y + layout_direct_arrow_canvas_padding
   cetz.canvas(length: 1pt, padding: none, {
     import cetz.draw: *
     hide(
@@ -655,7 +752,7 @@
       bounds: true,
     )
 
-    for segment in result.segments {
+    for segment in segments {
       let source = (segment.source_x / 1pt, -segment.source_y / 1pt)
       let target = (segment.target_x / 1pt, -segment.target_y / 1pt)
       let lane = (segment.lane_x / 1pt, 0)
@@ -715,6 +812,157 @@
       }
     }
   })
+}
+
+#let direct_arrows_overlay(
+  resolved,
+  visible_block_ids: none,
+  link_scope: "general",
+  width: 100pt,
+) = context {
+  let direct_links = outer_direct_links_for_scope(resolved, visible_block_ids: visible_block_ids)
+  let origin_hits = query(direct_arrow_origin_label(link_scope))
+
+  if direct_links.len() == 0 or origin_hits.len() == 0 {
+    return []
+  }
+
+  let origin = origin_hits.first().location().position()
+  let result = direct_arrow_segments(
+    resolved,
+    direct_links,
+    link_scope,
+    origin,
+    visible_block_ids: visible_block_ids,
+  )
+
+  if result.segments.len() == 0 {
+    return []
+  }
+
+  direct_segments_canvas(result.segments, width, result.max_y)
+}
+
+#let inner_direct_anchor_sides(link_data) = {
+  let source_level = link_data.source.block_level
+  let target_level = link_data.target.block_level
+
+  if source_level != none and target_level != none and source_level < target_level {
+    (source: "right", target: "left")
+  } else if source_level != none and target_level != none and source_level > target_level {
+    (source: "left", target: "right")
+  } else {
+    (source: "left", target: "left")
+  }
+}
+
+#let inner_direct_arrow_segments(
+  resolved,
+  constellation_id,
+  direct_links,
+  link_scope,
+  origin,
+  visible_block_ids: none,
+) = {
+  let segments = ()
+  let missing = ()
+  let max_y = 0pt
+
+  for link_data in direct_links {
+    let source_level = link_data.source.block_level
+    let target_level = link_data.target.block_level
+
+    if source_level == none or target_level == none or source_level == target_level {
+      continue
+    }
+
+    let left_level = calc.min(source_level, target_level)
+    let right_level = calc.max(source_level, target_level)
+    let pipe = inner_direct_pipe_between_levels(
+      resolved,
+      constellation_id,
+      left_level,
+      right_level,
+      visible_block_ids: visible_block_ids,
+    )
+    let lane_index = direct_pipe_lane_index(pipe.links, link_data.id)
+    let sides = inner_direct_anchor_sides(link_data)
+    let source_anchor = direct_anchor_id(resolved, link_data.source, sides.source, role: "source")
+    let target_anchor = direct_anchor_id(resolved, link_data.target, sides.target, role: "target")
+
+    if source_anchor == none or target_anchor == none or lane_index == none {
+      missing.push(link_data)
+    } else {
+      let source_hits = query(row_anchor_label(link_scope, source_anchor))
+      let target_hits = query(row_anchor_label(link_scope, target_anchor))
+      let pipe_hits = query(inner_direct_pipe_label(link_scope, constellation_id, left_level, right_level))
+
+      if source_hits.len() == 0 or target_hits.len() == 0 or pipe_hits.len() == 0 {
+        missing.push(link_data)
+      } else {
+        let source_position = source_hits.first().location().position()
+        let target_position = target_hits.first().location().position()
+        let pipe_position = pipe_hits.first().location().position()
+        let source_x = source_position.x - origin.x
+        let source_y = source_position.y - origin.y
+        let target_x = target_position.x - origin.x
+        let target_y = target_position.y - origin.y
+        let lane_x = pipe_position.x - origin.x + layout_inner_direct_pipe_inset + layout_direct_pipe_line_width / 2 + lane_index * (layout_direct_pipe_line_width + layout_inner_direct_pipe_gutter)
+
+        max_y = calc.max(max_y, source_y, target_y)
+        segments.push((
+          id: link_data.id,
+          source_x: source_x,
+          source_y: source_y,
+          target_x: target_x,
+          target_y: target_y,
+          lane_x: lane_x,
+          paint: constellation_accent(resolved, constellation_id),
+        ))
+      }
+    }
+  }
+
+  (
+    segments: segments,
+    missing: missing,
+    max_y: max_y,
+  )
+}
+
+#let inner_direct_arrows_overlay(
+  resolved,
+  constellation_id,
+  visible_block_ids: none,
+  link_scope: "general",
+  width: 100pt,
+) = context {
+  let direct_links = inner_direct_links_for_constellation(
+    resolved,
+    constellation_id,
+    visible_block_ids: visible_block_ids,
+  )
+  let origin_hits = query(inner_direct_arrow_origin_label(link_scope, constellation_id))
+
+  if direct_links.len() == 0 or origin_hits.len() == 0 {
+    return []
+  }
+
+  let origin = origin_hits.first().location().position()
+  let result = inner_direct_arrow_segments(
+    resolved,
+    constellation_id,
+    direct_links,
+    link_scope,
+    origin,
+    visible_block_ids: visible_block_ids,
+  )
+
+  if result.segments.len() == 0 {
+    return []
+  }
+
+  direct_segments_canvas(result.segments, width, result.max_y)
 }
 
 #let compact_grid_cell(
@@ -981,13 +1229,13 @@
   let accent = if constellation == none {
     color_main
   } else {
-    field(constellation.raw, "color", default: color_main)
+    constellation.colors.block_accent
   }
 
   let body_fill = if constellation == none {
     white
   } else {
-    field(constellation.raw, "fill", default: white)
+    constellation.colors.block_fill
   }
 
   let rows = block_data.rows.sorted(key: row => row.order)
@@ -1040,16 +1288,92 @@
   block_data.rows.any(row => link_blocks_for_target(links, block_data.id, row.id).len() > 0)
 }
 
-#let constellation_dynamic_width(blocks, links) = {
-  let needs_outer_anchor = blocks.any(block_data => block_has_outer_target_anchor(block_data, links))
-  layout_column_width + if needs_outer_anchor {
+#let block_levels(blocks) = {
+  let levels = ()
+  for block_data in blocks {
+    if not levels.contains(block_data.block_level) {
+      levels.push(block_data.block_level)
+    }
+  }
+  levels.sorted()
+}
+
+#let blocks_at_level(blocks, level) = {
+  blocks
+    .filter(block_data => block_data.block_level == level)
+    .sorted(key: block_data => block_data.block_order * 10000 + block_data.source_index)
+}
+
+#let block_level_dynamic_width(blocks, level, links) = {
+  let level_blocks = blocks_at_level(blocks, level)
+  let needs_outer_anchor = level_blocks.any(block_data => block_has_outer_target_anchor(block_data, links))
+  layout_block_column_width + if needs_outer_anchor {
     layout_link_block_outer_anchor_reserve
   } else {
     0pt
   }
 }
 
-#let constellation_container(
+#let constellation_inner_width(resolved, constellation_id, blocks, links) = {
+  let levels = block_levels(blocks)
+  if levels.len() == 0 {
+    return layout_block_column_width
+  }
+
+  let level_widths = levels.map(level => block_level_dynamic_width(blocks, level, links))
+  let pipe_width = inner_direct_pipe_total_width(
+    resolved,
+    constellation_id,
+    levels,
+    visible_block_ids: blocks.map(block_data => block_data.id),
+  )
+  let gap_width = if levels.len() > 1 {
+    layout_block_column_gap * (levels.len() - 1)
+  } else {
+    0pt
+  }
+
+  level_widths.sum() + gap_width + pipe_width
+}
+
+#let constellation_dynamic_width(resolved, constellation_id, blocks, links) = {
+  constellation_inner_width(resolved, constellation_id, blocks, links) + layout_constellation_padding * 2
+}
+
+#let block_level_column(
+  constellation,
+  blocks,
+  level,
+  width,
+  data_type_abstractions: (),
+  links: (),
+  show_anchor_debug: layout_show_anchor_debug,
+  visible_block_ids: none,
+  link_scope: "general",
+) = [
+  #block(width: width)[
+    #text(size: 6pt, fill: constellation.colors.accent, weight: 700)[BLOCK LEVEL #level]
+    #v(5pt)
+    #let level_blocks = blocks_at_level(blocks, level)
+    #for index in range(0, level_blocks.len()) [
+      #if index > 0 [
+        #v(layout_block_gap)
+      ]
+      #compact_database_block(
+        level_blocks.at(index),
+        constellation: constellation,
+        data_type_abstractions: data_type_abstractions,
+        links: links,
+        show_anchor_debug: show_anchor_debug,
+        visible_block_ids: visible_block_ids,
+        link_scope: link_scope,
+      )
+    ]
+  ]
+]
+
+#let constellation_block_grid(
+  resolved,
   constellation,
   blocks,
   data_type_abstractions: (),
@@ -1057,13 +1381,87 @@
   show_anchor_debug: layout_show_anchor_debug,
   visible_block_ids: none,
   link_scope: "general",
+) = {
+  let levels = block_levels(blocks)
+  let columns = ()
+  let cells = ()
+  let level_widths = levels.map(level => block_level_dynamic_width(blocks, level, links))
+  let inner_width = constellation_inner_width(resolved, constellation.id, blocks, links)
+
+  for index in range(0, levels.len()) {
+    let level = levels.at(index)
+    let level_width = level_widths.at(index)
+    columns.push(level_width)
+    cells.push(block_level_column(
+      constellation,
+      blocks,
+      level,
+      level_width,
+      data_type_abstractions: data_type_abstractions,
+      links: links,
+      show_anchor_debug: show_anchor_debug,
+      visible_block_ids: visible_block_ids,
+      link_scope: link_scope,
+    ))
+
+    if index < levels.len() - 1 {
+      let pipe = inner_direct_pipe_between_levels(
+        resolved,
+        constellation.id,
+        level,
+        levels.at(index + 1),
+        visible_block_ids: visible_block_ids,
+      )
+      columns.push(layout_block_column_gap / 2)
+      cells.push([])
+      columns.push(pipe.width)
+      cells.push(inner_direct_pipe_slot(pipe, link_scope: link_scope))
+      columns.push(layout_block_column_gap / 2)
+      cells.push([])
+    }
+  }
+
+  [
+    #block(width: inner_width)[
+      #place(top + left)[
+        #box(width: 0pt, height: 0pt)[]
+        #inner_direct_arrow_origin_label(link_scope, constellation.id)
+      ]
+      #grid(
+        columns: columns,
+        gutter: 0pt,
+        align: (left + top,),
+        ..cells,
+      )
+      #place(top + left)[
+        #inner_direct_arrows_overlay(
+          resolved,
+          constellation.id,
+          visible_block_ids: visible_block_ids,
+          link_scope: link_scope,
+          width: inner_width,
+        )
+      ]
+    ]
+  ]
+}
+
+#let constellation_container(
+  constellation,
+  blocks,
+  resolved: none,
+  data_type_abstractions: (),
+  links: (),
+  show_anchor_debug: layout_show_anchor_debug,
+  visible_block_ids: none,
+  link_scope: "general",
   width: none,
 ) = {
-  let accent = field(constellation.raw, "color", default: color_main)
-  let fill = field(constellation.raw, "fill", default: color_panel)
+  let accent = constellation.colors.accent
+  let fill = constellation.colors.fill
 
   let container_width = if width == none {
-    constellation_dynamic_width(blocks, links)
+    constellation_dynamic_width(resolved, constellation.id, blocks, links)
   } else {
     width
   }
@@ -1091,20 +1489,16 @@
     #if blocks.len() == 0 [
       #text(size: small_text_size, fill: color_muted)[No blocks in this constellation.]
     ] else [
-      #for index in range(0, blocks.len()) [
-        #if index > 0 [
-          #v(layout_block_gap)
-        ]
-        #compact_database_block(
-          blocks.at(index),
-          constellation: constellation,
-          data_type_abstractions: data_type_abstractions,
-          links: links,
-          show_anchor_debug: show_anchor_debug,
-          visible_block_ids: visible_block_ids,
-          link_scope: link_scope,
-        )
-      ]
+      #constellation_block_grid(
+        resolved,
+        constellation,
+        blocks,
+        data_type_abstractions: data_type_abstractions,
+        links: links,
+        show_anchor_debug: show_anchor_debug,
+        visible_block_ids: visible_block_ids,
+        link_scope: link_scope,
+      )
     ]
   ]
 }
@@ -1144,12 +1538,12 @@
   }
 
   panel([Direct arrows], [
-    #text(size: small_text_size, fill: color_muted)[Adjacent-level direct links use independent routing-pipe lanes. Same-constellation and skip-level routes remain pending.]
+    #text(size: small_text_size, fill: color_muted)[Cross-constellation links use outer pipes; adjacent internal block levels use constellation-scoped inner pipes.]
     #v(6pt)
     #for link_data in direct_links [
       #text(font: font_mono, size: 5.8pt, fill: color_sec)[#link_data.id]
       #v(1pt)
-      #text(size: 5.8pt)[#link_data.relation #h(3pt) #link_data.requested_mode -> #link_data.mode]
+      #text(size: 5.8pt)[#link_data.routing_scope / #link_data.routing_relation #h(3pt) #link_data.requested_mode -> #link_data.render_mode]
       #v(1pt)
       #let endpoint = link_data.source.block + "." + link_data.source.row + " -> " + link_data.target.block + "." + link_data.target.row
       #text(font: font_mono, size: 5.8pt, fill: color_muted)[#endpoint]
@@ -1159,7 +1553,7 @@
 }
 
 #let link_blocks_panel(resolved) = {
-  let link_blocks = resolved.links.filter(link => link.mode == "link-block")
+  let link_blocks = resolved.links.filter(link => link.render_mode == "link-block")
 
   if link_blocks.len() == 0 {
     return []
@@ -1171,7 +1565,7 @@
     #for link in link_blocks [
       #text(font: font_mono, size: 5.8pt, fill: color_link_block_text)[#link.id]
       #v(1pt)
-      #text(size: 5.8pt)[#link.relation #h(3pt) #link.requested_mode -> #link.mode]
+      #text(size: 5.8pt)[#link.routing_scope / #link.routing_relation #h(3pt) #link.requested_mode -> #link.render_mode]
       #v(1pt)
       #let endpoint = link.source.block + "." + link.source.row + " -> " + link.target.block + "." + link.target.row
       #text(font: font_mono, size: 5.8pt, fill: color_muted)[#endpoint]
@@ -1184,13 +1578,13 @@
   let accent = if constellation == none {
     color_main
   } else {
-    field(constellation, "color", default: color_main)
+    constellation.colors.block_accent
   }
 
   let body_fill = if constellation == none {
     white
   } else {
-    field(constellation, "fill", default: white)
+    constellation.colors.block_fill
   }
 
   let cells = ()

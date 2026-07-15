@@ -6,10 +6,10 @@ Stage 3 defines a resolver contract, not the final drawing system.
 
 - `src/.preset/preambles/alignment_model.typ`
   - `normalize_recipe(recipe)`
-  - `normalize_constellations(constellations)`
-  - `normalize_blocks(blocks, constellations)`
-  - `normalize_links(links, blocks, constellations)`
-  - `resolve_link_mode(requested_mode, relation)`
+- `normalize_constellations(constellations)`
+- `normalize_blocks(blocks, constellations)`
+- `normalize_links(links, blocks, constellations)`
+- scoped link-mode resolution for cross-constellation, internal, and same-block links
 - `src/.preset/alignment_contract.typ`
   - Compiles a readable report for the example recipe.
 - `src/.preset/preambles/layouts.typ`
@@ -34,6 +34,8 @@ Blocks resolve to:
 - `constellation`
 - `constellation_level`
 - `constellation_order`
+- `block_level`
+- `block_order`
 - `order`
 - `rows`
 - `layout.column`
@@ -42,18 +44,19 @@ Blocks resolve to:
 
 Links resolve to:
 
-- source and target block, row, constellation, and level
+- source and target block, row, constellation level, and block level
 - source and target row anchor metadata
-- `relation`: `internal`, `adjacent-level`, `same-level`, `skip-level`, or `invalid`
+- `routing_scope`: `cross-constellation`, `internal`, `same-block`, or `invalid`
+- `routing_relation`: `adjacent-level`, `same-level`, `skip-level`, `same-block`, or `invalid`
 - `requested_mode`
 - final `mode`: `direct`, `link-block`, or `invalid`
+- effective `render_mode`, which records a diagnostic link-block fallback without rewriting final `mode`
 
 ## Auto mode rules
 
-- same constellation -> `direct`
-- adjacent levels -> `direct`
-- same-level constellations -> `link-block`
-- skip-level references -> `link-block`
+- cross-constellation adjacent constellation levels -> `direct`
+- internal adjacent block levels -> `direct`
+- same-level, skip-level, and same-block references -> `link-block`
 - invalid references -> diagnostic and `invalid`
 
 Advanced graph layout, smart routing, and anchor drawing are intentionally left for later stages.
@@ -128,7 +131,7 @@ the block body.
 
 ## Stage 6 link-blocks
 
-Resolved links whose final `mode` is `link-block` render paired compact badges
+Resolved links whose effective `render_mode` is `link-block` render paired compact badges
 outside the block table:
 
 - source row: badge on the left side
@@ -184,13 +187,30 @@ filled with the same color.
 `layout_direct_arrow_corner_radius` controls the rounded bends between the
 horizontal branches and the vertical pipe lane.
 
-Current limitation: same-constellation direct links have no inter-level pipe,
-and explicit skip-level direct links would need multiple pipes. Both routing
-cases remain deferred.
+Stage 8 adds constellation-scoped inner pipes for direct links between adjacent
+block levels. Explicit same-level, skip-level, and same-block direct links keep
+their final `direct` mode but receive a diagnostic and render as link-blocks.
+Outer skip-level direct routing remains deferred.
 
 Examples in the preset:
 
-- explicit `direct`: `mc_machines.gateway_id -> gw_gateways.gateway_id`
-- explicit `direct`: `mc_processes.process_name -> lo_locations.location_id`
-- auto same-level: `ds_devices.gateway_id -> gw_gateways.gateway_id`
-- auto skip-level: `hist_samples.location_id -> lo_locations.location_id`
+- internal adjacent auto-direct: `locations.type_id -> types_locations.type_id`
+- internal same-level auto link-block: `location_aliases.location_id -> locations.location_id`
+- internal skip-level auto link-block: `location_events.type_id -> types_locations.type_id`
+- same-block auto link-block: `location_events.parent_event_id -> location_events.event_id`
+- cross-constellation adjacent auto-direct: `mc_sites.location_id -> locations.location_id`
+
+## Stage 8 nested block alignment
+
+Every constellation resolves its own sorted block-level list. The renderer
+creates one block column per level, stacks blocks by `block_order` and source
+index, and reserves a lane-sized inner pipe only where an adjacent internal
+direct link needs it. Inner labels include both the page scope and
+constellation id, so equal block-level pairs in different constellations cannot
+collide in Typst queries.
+
+Constellation width is derived from its block-column widths, block-column gaps,
+inner pipe widths, link-block clearances, and padding. The outer level column
+still uses the widest constellation at that constellation level. Consequently,
+outer and inner routing can coexist without reusing coordinates or clipping
+row ports.
