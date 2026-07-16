@@ -1,4 +1,11 @@
 #let links = (
+  // Internal adjacent block levels: auto resolves to an inner direct pipe.
+  (
+    id: "lo_locations_type_fk",
+    source: (block: "locations", row: "type_id"),
+    target: (block: "types_locations", row: "type_id"),
+    mode: "auto",
+  ),
   (
     id: "gw_brand_to_references_fk",
     source: (
@@ -50,12 +57,10 @@
   (
     id: "gw_chunk_to_entry_fk",
     source: (
-      constellation: "gw",
       block: "entries",
       row: "chunk_id",
     ),
     target: (
-      constellation: "gw",
       block: "registries",
       row: "chunk_id",
     ),
@@ -143,7 +148,7 @@
       block: "sensors",
       row: "sensor_id",
     ),
-    mode: "auto",
+    mode: "link-block",
   ),
   (
     id: "mc_machine_to_attached_fk",
@@ -155,7 +160,7 @@
       block: "machines",
       row: "machine_id",
     ),
-    mode: "auto",
+    mode: "link-block",
   ),
   (
     id: "mc_type_to_threshold_fk",
@@ -170,6 +175,18 @@
     mode: "auto",
   ),
   (
+    id: "mc_machine_to_threshold_fk",
+    source: (
+      block: "thresholds",
+      row: "machine_id",
+    ),
+    target: (
+      block: "machines",
+      row: "machine_id",
+    ),
+    mode: "link-block",
+  ),
+  (
     id: "mc_dimension_to_threshold",
     source: (
       block: "thresholds",
@@ -179,6 +196,18 @@
       block: "dimensions",
       row: "dimension_id",
     ),
-    mode: "auto",
+    mode: "link-block",
+  ),
+  (
+    id: "mc_machine_to_registry_fk",
+    source: (
+      block: "registries",
+      row: "machine_id",
+    ),
+    target: (
+      block: "machines",
+      row: "machine_id",
+    ),
+    mode: "link-block",
   ),
 )

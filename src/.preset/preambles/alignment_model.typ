@@ -68,6 +68,74 @@
   fallback
 }
 
+#let inline_link_specs(linked) = {
+  if type(linked) == array and linked.len() > 0 and type(linked.first()) == array {
+    linked
+  } else {
+    (linked,)
+  }
+}
+
+#let collect_inline_links(blocks) = {
+  let links = ()
+  let diagnostics = ()
+
+  for block_index in range(0, blocks.len()) {
+    let block_data = blocks.at(block_index)
+    let block_id = field(block_data, "id", default: "block-" + str(block_index + 1))
+    let source_constellation = field(block_data, "constellation", default: none)
+    let columns = field(block_data, "columns", default: ())
+
+    for column_index in range(0, columns.len()) {
+      let column = columns.at(column_index)
+      let linked = field(column, "linked", default: none)
+
+      if linked != none {
+        let source_row_id = row_id(column, fallback: "row-" + str(column_index + 1))
+        let specs = inline_link_specs(linked)
+
+        for spec_index in range(0, specs.len()) {
+          let spec = specs.at(spec_index)
+          let link_id = "inline-" + block_id + "-" + source_row_id + "-" + str(spec_index + 1)
+          let valid_spec = type(spec) == array and (spec.len() == 3 or spec.len() == 4)
+
+          if not valid_spec {
+            diagnostics.push(diagnostic(
+              "warning",
+              "invalid-inline-link",
+              [Inline link #link_id must be `(constellation, block, row)` or `(constellation, block, row, mode)`.],
+              link: link_id,
+            ))
+          } else {
+            let target_constellation = content_to_str(spec.at(0))
+            let target_block = content_to_str(spec.at(1))
+            let target_row = content_to_str(spec.at(2))
+            let mode = if spec.len() == 4 { content_to_str(spec.at(3)) } else { "auto" }
+
+            links.push((
+              id: link_id,
+              source: (
+                constellation: source_constellation,
+                block: block_id,
+                row: source_row_id,
+              ),
+              target: (
+                constellation: target_constellation,
+                block: target_block,
+                row: target_row,
+              ),
+              mode: mode,
+              declaration: "inline",
+            ))
+          }
+        }
+      }
+    }
+  }
+
+  (links: links, diagnostics: diagnostics)
+}
+
 #let canonical_anchor_side(side) = {
   if side == "source" or side == "source-side" {
     "left"
@@ -80,22 +148,32 @@
   }
 }
 
-#let row_anchor(block_id, row_id, side) = {
-  block_id + "." + row_id + "." + canonical_anchor_side(side)
+#let block_identity(constellation_id, block_id) = {
+  let constellation = if constellation_id == none { "unresolved" } else { constellation_id }
+  constellation + "." + block_id
 }
 
-#let row_anchor_set(block_id, row_id) = (
-  left: row_anchor(block_id, row_id, "left"),
-  right: row_anchor(block_id, row_id, "right"),
-  right_outer: row_anchor(block_id, row_id, "right-outer"),
-  center: row_anchor(block_id, row_id, "center"),
-  source: row_anchor(block_id, row_id, "source"),
-  target: row_anchor(block_id, row_id, "target"),
+#let row_anchor(constellation_id, block_id, row_id, side) = {
+  block_identity(constellation_id, block_id) + "." + row_id + "." + canonical_anchor_side(side)
+}
+
+#let row_anchor_set(constellation_id, block_id, row_id) = (
+  left: row_anchor(constellation_id, block_id, row_id, "left"),
+  right: row_anchor(constellation_id, block_id, row_id, "right"),
+  right_outer: row_anchor(constellation_id, block_id, row_id, "right-outer"),
+  center: row_anchor(constellation_id, block_id, row_id, "center"),
+  source: row_anchor(constellation_id, block_id, row_id, "source"),
+  target: row_anchor(constellation_id, block_id, row_id, "target"),
 )
 
-#let endpoint_anchor(endpoint, role) = {
+#let endpoint_anchor(endpoint, role, constellation: none) = {
   let block_id = field(endpoint, "block", default: none)
   let row_id = field(endpoint, "row", default: none)
+  let constellation_id = if constellation == none {
+    field(endpoint, "constellation", default: none)
+  } else {
+    constellation
+  }
   let requested_side = field(endpoint, "side", default: role)
   let side = canonical_anchor_side(requested_side)
 
@@ -105,12 +183,12 @@
     id: if block_id == none or row_id == none {
       none
     } else {
-      row_anchor(block_id, row_id, side)
+      row_anchor(constellation_id, block_id, row_id, side)
     },
   )
 }
 
-#let normalize_rows(block_data, block_id) = {
+#let normalize_rows(block_data, constellation_id, block_id) = {
   let rows = ()
   let columns = field(block_data, "columns", default: ())
 
@@ -124,7 +202,7 @@
         section: "columns",
         order: field(column, "order", default: index + 1),
         source_index: index + 1,
-        anchors: row_anchor_set(block_id, id),
+        anchors: row_anchor_set(constellation_id, block_id, id),
         raw: column,
       ))
     }
@@ -140,7 +218,7 @@
     for row in block_data.rows {
       for side in ("left", "right", "right-outer", "center") {
         anchors.push((
-          id: row_anchor(block_data.id, row.id, side),
+          id: row_anchor(block_data.constellation, block_data.id, row.id, side),
           block: block_data.id,
           row: row.id,
           side: side,
@@ -195,15 +273,48 @@
   constellations.find(constellation => constellation.id == id)
 }
 
-#let block_by_id(blocks, id) = {
-  blocks.find(block_data => block_data.id == id)
-}
-
 #let row_by_id(block_data, id) = {
   if block_data == none {
     none
   } else {
     block_data.rows.find(row => row.id == id)
+  }
+}
+
+#let endpoint_id_candidates(blocks, endpoint) = {
+  let block_id = field(endpoint, "block", default: none)
+  blocks.filter(block_data => block_data.id == block_id)
+}
+
+#let endpoint_block_candidates(blocks, endpoint) = {
+  let candidates = endpoint_id_candidates(blocks, endpoint)
+  let constellation_hint = field(endpoint, "constellation", default: none)
+  let row = field(endpoint, "row", default: none)
+
+  if constellation_hint != none {
+    candidates = candidates.filter(block_data => block_data.constellation == constellation_hint)
+  }
+
+  let row_matches = candidates.filter(block_data => row_by_id(block_data, row) != none)
+  if row_matches.len() > 0 {
+    row_matches
+  } else {
+    candidates
+  }
+}
+
+#let narrow_endpoint_candidates(candidates, counterpart_candidates) = {
+  if candidates.len() <= 1 or counterpart_candidates.len() != 1 {
+    return candidates
+  }
+
+  let counterpart_constellation = counterpart_candidates.first().constellation
+  let same_constellation = candidates.filter(block_data => block_data.constellation == counterpart_constellation)
+
+  if same_constellation.len() == 1 {
+    same_constellation
+  } else {
+    candidates
   }
 }
 
@@ -261,7 +372,7 @@
       ))
     }
 
-    let rows = normalize_rows(block_data, id)
+    let rows = normalize_rows(block_data, constellation_id, id)
 
     normalized.push((
       id: id,
@@ -401,14 +512,31 @@
     let target = field(link, "target", default: (:))
     let source_block_id = field(source, "block", default: none)
     let source_row_id = field(source, "row", default: none)
+    let source_constellation_hint = field(source, "constellation", default: none)
     let target_block_id = field(target, "block", default: none)
     let target_row_id = field(target, "row", default: none)
-    let source_block = block_by_id(blocks, source_block_id)
-    let target_block = block_by_id(blocks, target_block_id)
+    let target_constellation_hint = field(target, "constellation", default: none)
+    let source_id_candidates = endpoint_id_candidates(blocks, source)
+    let target_id_candidates = endpoint_id_candidates(blocks, target)
+    let initial_source_candidates = endpoint_block_candidates(blocks, source)
+    let initial_target_candidates = endpoint_block_candidates(blocks, target)
+    let source_candidates = narrow_endpoint_candidates(initial_source_candidates, initial_target_candidates)
+    let target_candidates = narrow_endpoint_candidates(initial_target_candidates, source_candidates)
+    let final_source_candidates = narrow_endpoint_candidates(source_candidates, target_candidates)
+    let source_block = if final_source_candidates.len() == 1 { final_source_candidates.first() } else { none }
+    let target_block = if target_candidates.len() == 1 { target_candidates.first() } else { none }
     let source_row = row_by_id(source_block, source_row_id)
     let target_row = row_by_id(target_block, target_row_id)
-    let source_anchor = endpoint_anchor(source, "source")
-    let target_anchor = endpoint_anchor(target, "target")
+    let source_anchor = endpoint_anchor(
+      source,
+      "source",
+      constellation: if source_block == none { source_constellation_hint } else { source_block.constellation },
+    )
+    let target_anchor = endpoint_anchor(
+      target,
+      "target",
+      constellation: if target_block == none { target_constellation_hint } else { target_block.constellation },
+    )
 
     if not supported_modes.contains(requested_mode) {
       diagnostics.push(diagnostic(
@@ -420,21 +548,47 @@
     }
 
     if source_block == none {
-      diagnostics.push(diagnostic(
-        "warning",
-        "source-block-not-found",
-        [Link #id source block #source_block_id was not found.],
-        link: id,
-      ))
+      if source_id_candidates.len() == 0 or initial_source_candidates.len() == 0 {
+        diagnostics.push(diagnostic(
+          "warning",
+          "source-block-not-found",
+          if source_constellation_hint == none {
+            [Link #id source block #source_block_id was not found.]
+          } else {
+            [Link #id source block #source_block_id was not found in constellation #source_constellation_hint.]
+          },
+          link: id,
+        ))
+      } else {
+        diagnostics.push(diagnostic(
+          "warning",
+          "source-block-ambiguous",
+          [Link #id source block #source_block_id matches more than one constellation; add a `constellation` field to the endpoint.],
+          link: id,
+        ))
+      }
     }
 
     if target_block == none {
-      diagnostics.push(diagnostic(
-        "warning",
-        "target-block-not-found",
-        [Link #id target block #target_block_id was not found.],
-        link: id,
-      ))
+      if target_id_candidates.len() == 0 or initial_target_candidates.len() == 0 {
+        diagnostics.push(diagnostic(
+          "warning",
+          "target-block-not-found",
+          if target_constellation_hint == none {
+            [Link #id target block #target_block_id was not found.]
+          } else {
+            [Link #id target block #target_block_id was not found in constellation #target_constellation_hint.]
+          },
+          link: id,
+        ))
+      } else {
+        diagnostics.push(diagnostic(
+          "warning",
+          "target-block-ambiguous",
+          [Link #id target block #target_block_id matches more than one constellation; add a `constellation` field to the endpoint.],
+          link: id,
+        ))
+      }
     }
 
     if source_block != none and source_row == none {
@@ -499,6 +653,7 @@
         block: source_block_id,
         row: source_row_id,
         constellation: source_constellation,
+        declared_constellation: source_constellation_hint,
         constellation_level: source_constellation_level,
         block_level: source_block_level,
         level: source_constellation_level,
@@ -508,6 +663,7 @@
         block: target_block_id,
         row: target_row_id,
         constellation: target_constellation,
+        declared_constellation: target_constellation_hint,
         constellation_level: target_constellation_level,
         block_level: target_block_level,
         level: target_constellation_level,
@@ -524,6 +680,7 @@
       route_supported: route_supported,
       valid: endpoints_valid and routing_scope != "invalid" and supported_modes.contains(requested_mode),
       source_index: index + 1,
+      declaration: field(link, "declaration", default: "links-file"),
       raw: link,
     ))
   }
@@ -561,14 +718,21 @@
 
 #let normalize_recipe(recipe, custom_color_schemas: ()) = {
   let metadata = field(recipe, "metadata", default: (:))
+  let raw_blocks = field(recipe, "blocks", default: ())
   let color_schema = resolve_color_schema(metadata, custom_schemas: custom_color_schemas)
   let constellations = normalize_constellations(field(recipe, "constellations", default: ()), color_schema)
-  let block_result = normalize_blocks(field(recipe, "blocks", default: ()), constellations)
-  let link_result = normalize_links(field(recipe, "links", default: ()), block_result.blocks, constellations)
+  let block_result = normalize_blocks(raw_blocks, constellations)
+  let inline_link_result = collect_inline_links(raw_blocks)
+  let combined_links = field(recipe, "links", default: ()) + inline_link_result.links
+  let link_result = normalize_links(combined_links, block_result.blocks, constellations)
   let anchors = collect_row_anchors(block_result.blocks)
   let diagnostics = ()
 
   for item in block_result.diagnostics {
+    diagnostics.push(item)
+  }
+
+  for item in inline_link_result.diagnostics {
     diagnostics.push(item)
   }
 

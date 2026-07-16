@@ -1,6 +1,7 @@
 #import "@preview/cetz:0.5.2"
 #import "settings.typ": *
 #import "common_functions.typ": field, attr_text, data_type_text
+#import "alignment_model.typ": block_identity, row_anchor
 
 #let mono(body, fill: color_text, weight: 400) = {
   text(
@@ -257,12 +258,12 @@
   upper(constellation_code + block_code + id_initials(row))
 }
 
-#let row_destination_label(link_scope, block_id, row_id) = {
-  label("row:" + link_scope + ":" + block_id + "." + row_id)
+#let row_destination_label(link_scope, constellation_id, block_id, row_id) = {
+  label("row:" + link_scope + ":" + block_identity(constellation_id, block_id) + "." + row_id)
 }
 
 #let target_is_visible(link_data, visible_block_ids) = {
-  visible_block_ids == none or visible_block_ids.contains(link_data.target.block)
+  visible_block_ids == none or visible_block_ids.contains(block_identity(link_data.target.constellation, link_data.target.block))
 }
 
 #let dedupe_link_blocks_by_code(links) = {
@@ -325,7 +326,7 @@
   ]
 
   if role == "source" and clickable {
-    link(row_destination_label(link_scope, link_data.target.block, link_data.target.row))[
+    link(row_destination_label(link_scope, link_data.target.constellation, link_data.target.block, link_data.target.row))[
       #badge
     ]
   } else {
@@ -420,29 +421,31 @@
   )
 }
 
-#let link_blocks_for_source(links, block_id, row_id) = {
+#let link_blocks_for_source(links, constellation_id, block_id, row_id) = {
   links.filter(link => {
     let is_link_block = link.render_mode == "link-block"
+    let is_source_constellation = link.source.constellation == constellation_id
     let is_source_block = link.source.block == block_id
     let is_source_row = link.source.row == row_id
-    is_link_block and is_source_block and is_source_row
+    is_link_block and is_source_constellation and is_source_block and is_source_row
   })
 }
 
-#let link_blocks_for_target(links, block_id, row_id) = {
+#let link_blocks_for_target(links, constellation_id, block_id, row_id) = {
   links.filter(link => {
     let is_link_block = link.render_mode == "link-block"
+    let is_target_constellation = link.target.constellation == constellation_id
     let is_target_block = link.target.block == block_id
     let is_target_row = link.target.row == row_id
-    is_link_block and is_target_block and is_target_row
+    is_link_block and is_target_constellation and is_target_block and is_target_row
   })
 }
 
 #let direct_links_for_scope(resolved, visible_block_ids: none) = {
   resolved.links.filter(link_data => {
     let is_direct = link_data.valid and link_data.render_mode == "direct"
-    let source_visible = visible_block_ids == none or visible_block_ids.contains(link_data.source.block)
-    let target_visible = visible_block_ids == none or visible_block_ids.contains(link_data.target.block)
+    let source_visible = visible_block_ids == none or visible_block_ids.contains(block_identity(link_data.source.constellation, link_data.source.block))
+    let target_visible = visible_block_ids == none or visible_block_ids.contains(block_identity(link_data.target.constellation, link_data.target.block))
     is_direct and source_visible and target_visible
   })
 }
@@ -630,7 +633,7 @@
 
 #let target_has_right_link_block(resolved, endpoint) = {
   resolved.links.find(link_data => {
-    link_data.render_mode == "link-block" and link_data.target.block == endpoint.block and link_data.target.row == endpoint.row
+    link_data.render_mode == "link-block" and link_data.target.constellation == endpoint.constellation and link_data.target.block == endpoint.block and link_data.target.row == endpoint.row
   }) != none
 }
 
@@ -643,7 +646,7 @@
     } else {
       side
     }
-    endpoint.block + "." + endpoint.row + "." + resolved_side
+    row_anchor(endpoint.constellation, endpoint.block, endpoint.row, resolved_side)
   }
 }
 
@@ -1122,6 +1125,7 @@
 ]
 
 #let compact_data_row(
+  constellation_id,
   block_id,
   row,
   name,
@@ -1169,7 +1173,7 @@
       arrow_color: arrow_color,
     ),
   )
-  #row_destination_label(link_scope, block_id, row.id)
+  #row_destination_label(link_scope, constellation_id, block_id, row.id)
 ]
 
 #let visual_name_cell(
@@ -1239,7 +1243,7 @@
   }
 
   let rows = block_data.rows.sorted(key: row => row.order)
-  let has_outer_target_anchor = rows.any(row => link_blocks_for_target(links, block_data.id, row.id).len() > 0)
+  let has_outer_target_anchor = rows.any(row => link_blocks_for_target(links, block_data.constellation, block_data.id, row.id).len() > 0)
   let right_side_width = layout_link_block_side_width + if has_outer_target_anchor {
     layout_link_block_outer_anchor_reserve
   } else {
@@ -1255,10 +1259,11 @@
     let column_name = field(column, "name", default: field(column, "id", default: [row]))
     let data_type = data_type_text(field(column, "data_type", default: none), data_type_abstractions)
     let attrs = attr_text(field(column, "attrs", default: ()))
-    let source_link_blocks = link_blocks_for_source(links, block_data.id, row.id)
-    let target_link_blocks = link_blocks_for_target(links, block_data.id, row.id)
+    let source_link_blocks = link_blocks_for_source(links, block_data.constellation, block_data.id, row.id)
+    let target_link_blocks = link_blocks_for_target(links, block_data.constellation, block_data.id, row.id)
 
     rows_content.push(compact_data_row(
+      block_data.constellation,
       block_data.id,
       row,
       column_name,
@@ -1285,7 +1290,7 @@
 }
 
 #let block_has_outer_target_anchor(block_data, links) = {
-  block_data.rows.any(row => link_blocks_for_target(links, block_data.id, row.id).len() > 0)
+  block_data.rows.any(row => link_blocks_for_target(links, block_data.constellation, block_data.id, row.id).len() > 0)
 }
 
 #let block_levels(blocks) = {
@@ -1325,7 +1330,7 @@
     resolved,
     constellation_id,
     levels,
-    visible_block_ids: blocks.map(block_data => block_data.id),
+    visible_block_ids: blocks.map(block_data => block_identity(block_data.constellation, block_data.id)),
   )
   let gap_width = if levels.len() > 1 {
     layout_block_column_gap * (levels.len() - 1)

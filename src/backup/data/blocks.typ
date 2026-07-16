@@ -1,4 +1,4 @@
-#let lo = (
+#let blocks = (
   (
     id: "types_locations",
     constellation: "lo",
@@ -92,7 +92,6 @@
           source: "int",
         ),
         attrs: ("NN", "FK"),
-        linked: ("lo", "types_locations", "type_id", "auto"),
       ),
       (
         id: "active",
@@ -108,9 +107,6 @@
       (name: [uq_lo_location_name], constraint_type: [UN], detail: [(location_name)]),
     ),
   ),
-)
-
-#let gw = (
   (
     id: "presets_brands",
     constellation: "gw",
@@ -404,9 +400,6 @@
     ),
     constraints: (),
   ),
-)
-
-#let ds = (
   (
     id: "presets_brands_sensors",
     constellation: "ds",
@@ -614,9 +607,6 @@
     ),
     constraints: (),
   ),
-)
-
-#let mc = (
   (
     id: "processes",
     constellation: "mc",
@@ -649,7 +639,6 @@
           source: "integer",
         ),
         attrs: ("NN", "FK"),
-        // linked: ("lo", "locations", "location_id"),
       ),
       (
         id: "active",
@@ -694,7 +683,6 @@
           source: "integer",
         ),
         attrs: ("NN", "FK"),
-        linked: ("mc", "processes", "process_id"),
       ),
       (
         id: "gateway_id",
@@ -703,7 +691,6 @@
           source: "integer",
         ),
         attrs: ("FK",),
-        linked: ("gw", "gateways", "gateway_id"),
       ),
       (
         id: "active",
@@ -852,7 +839,6 @@
           source: "integer",
         ),
         attrs: ("NN", "FK", "ODC"),
-        linked: ("mc", "machines", "machine_id"),
       ),
       (
         id: "dimension_id",
@@ -905,7 +891,6 @@
           source: "integer",
         ),
         attrs: ("NN", "FK", "ODC"),
-        linked: ("mc", "machines", "machine_id", "link-block"),
       ),
       (
         id: "date",
@@ -918,39 +903,4 @@
     ),
     constraints: (),
   ),
-  (
-    id: "entries",
-    constellation: "mc",
-    title: [entries],
-    kind: "database_table",
-    level: 3,
-    order: 2,
-    columns: (
-      (
-        id: "entry_id",
-        name: "entry_id",
-        data_type: (
-          source: "integer",
-        ),
-        attrs: ("NN", "PK"),
-      ),
-      (
-        id: "chunk_id",
-        name: "chunk_id",
-        data_type: (
-          source: "integer",
-        ),
-        attrs: ("NN", "FK", "ODC"),
-        linked: ("mc", "registries", "chunk_id"),
-      ),
-    ),
-    constraints: (),
-  ),
-)
-
-#let blocks = (
-  ..lo,
-  ..gw,
-  ..ds,
-  ..mc,
 )

@@ -1,6 +1,6 @@
 #import "settings.typ": *
 #import "common_functions.typ": field
-#import "alignment_model.typ": normalize_recipe
+#import "alignment_model.typ": normalize_recipe, block_identity
 #import "elements.typ": constellation_container, constellation_dynamic_width, legend_panel, author_panel, comments_panel, anchor_debug_panel, direct_links_panel, link_blocks_panel, direct_links_for_scope, direct_pipe_between_levels, direct_pipe_slot, direct_pipe_total_width, direct_arrows_overlay, direct_arrow_origin_label
 
 #let page_title(metadata, width: diagram_content_width) = [
@@ -169,7 +169,7 @@
   let levels = resolved.layout.levels
   let columns = ()
   let cells = ()
-  let visible_block_ids = resolved.blocks.map(block_data => block_data.id)
+  let visible_block_ids = resolved.blocks.map(block_data => block_identity(block_data.constellation, block_data.id))
   let pipe_width = direct_pipe_total_width(resolved, levels, visible_block_ids: visible_block_ids)
   let level_widths = levels.map(level => level_dynamic_width(resolved, level))
   let diagram_width = alignment_content_width(
@@ -335,7 +335,7 @@
     ]
   }
   let visible_blocks = blocks_for_constellation(resolved, constellation.id)
-  let visible_block_ids = visible_blocks.map(block_data => block_data.id)
+  let visible_block_ids = visible_blocks.map(block_data => block_identity(block_data.constellation, block_data.id))
 
   [
     #block(width: content_width)[
