@@ -9,7 +9,8 @@
             "\t\tsource: \"${3:integer, float, varchar, bool}\",",
             "${4:\t\tsize: ${5:size}}",
             "\t),",
-            "\tattrs: (${6:${7:\"NN\",} ${8:\"PK\",} ${9:\"FK\", ${10:\"ODC\",}}  ${11:\"D${12:default}\",}})",
+            "\tattrs: (${6:${7:\"NN\",} ${8:\"PK\",} ${9:\"FK\", ${10:\"ODC\",}}  ${11:\"D${12:default}\",}}),",
+            "${13:\tlinked: (\"${14:target constellation}\", \"${15:target block}\", \"${16:${1:target row}}\", ${17:\"${18:auto, direct or link-block}\"}),}",
             "),"
         ]
     },
@@ -28,6 +29,7 @@
             "\t\t$0",
             "\t),",
             "${7:constraints: (),}",
+
             "),"
         ]
     },

@@ -776,11 +776,81 @@ Add two preset schemas.
 
 Add to the `README.md/Instructions` how to add new schemas.
 
+
+#### Stage 2: faster links
+Currently, the user must link blocks through the `data/links.typ` file. It is ok, but may be faster and simpler.
+
+I propose the user can define link directly from the `data/blocks.typ` file. For example:
+
+```typst
+(
+  id: "types_locations",
+  constellation: "lo",
+  title: [types_locations],
+  kind: "database_table",
+  order: 1,
+  level: 1,
+  columns: (
+    (
+      id: "type_id",
+      name: "type_id",
+      data_type: (source: "integer"),
+      attrs: ("NN", "PK"),
+    ),
+    (
+      id: "name",
+      name: "name",
+      data_type: (
+        source: "varchar",
+        size: "255",
+      ),
+      attrs: ("NN",),
+    ),
+  ),
+),
+(
+  id: "locations",
+  constellation: "lo",
+  title: [locations],
+  kind: "database_table",
+  order: 1,
+  level: 2,
+  columns: (
+    (
+      id: "location_id",
+      name: [location_id],
+      data_type: (source: "integer"),
+      attrs: ("PK", "NN"),
+    ),
+    ...
+    (
+      id: "type_id",
+      name: "type_id",
+      data_type: (
+        source: "int",
+      ),
+      attrs: ("NN", "FK"),
+      linked: ("lo", "types_locations", "type_id", "auto")
+    ),
+  ),
+),
+```
+
+#### Requirements
+- Read the current linking system and design how to implementing this fast linking system beside the current one.
+
+- Implement it!
+
+- Make the current `lo.locations.type_id` link to use this new linking system.
+
 ### Agents comments
 #### Status
 - 2026-07-15: Stage 1 completed. Added the `ember` and `tidal` preset color schemas, metadata selection with a settings fallback, and diagram-local custom schema support.
+- 2026-07-16: Stage 2 completed. Block rows can now declare inline links that are merged with `data/links.typ` before normal validation and routing; `lo.locations.type_id` uses the new form.
 #### Information
 Color schemas use a cycling matrix in constellation source order. Every matrix entry supplies a constellation accent/fill plus a block accent/fill, so authors no longer assign `color` or `fill` for each constellation. The active schema is selected with `color_scheme` in `data/metadata.typ`; if it is omitted, `preambles/settings.typ` supplies `default_color_scheme`. New schemas go in `data/color_schemas.typ` and can intentionally override a preset when they use the same id.
+
+Inline links use `linked: (target-constellation, target-block, target-row, mode)` on a column. A three-item tuple defaults to `auto`, and nested tuples support multiple targets from one row. The normalizer converts these declarations to regular link records, appends them to the explicit `data/links.typ` records, and passes both forms through the same endpoint validation, mode resolution, diagnostics, anchors, and renderers. Inline links receive deterministic ids based on their source block, source row, and inline position. The declared target constellation is checked against the target block's resolved constellation.
 
 ## /*/*name/*/*
 ### Context

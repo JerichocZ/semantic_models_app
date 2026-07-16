@@ -203,3 +203,44 @@ more constellations than matrix entries.
   ),
 )
 ```
+
+### Inline links
+
+A column can define its reference beside the rest of its data with `linked`:
+
+```typst
+(
+  id: "type_id",
+  name: "type_id",
+  data_type: (source: "integer"),
+  attrs: ("NN", "FK"),
+  linked: ("lo", "types_locations", "type_id", "auto"),
+)
+```
+
+The tuple contains the target constellation, target block, target row, and
+link mode. The mode may be omitted and defaults to `"auto"`. To link one row
+to several targets, use nested tuples:
+
+```typst
+linked: (
+  ("lo", "types_locations", "type_id", "auto"),
+  ("audit", "type_history", "type_id", "link-block"),
+)
+```
+
+Inline links and entries in `data/links.typ` are combined before validation
+and routing, so the original link format remains available for more explicit
+definitions.
+
+Inline links automatically qualify their source with the containing
+constellation. In `data/links.typ`, endpoints may also include a
+`constellation` field when block ids are repeated:
+
+```typst
+source: (constellation: "mc", block: "registries", row: "machine_id"),
+target: (constellation: "mc", block: "machines", row: "machine_id"),
+```
+
+For compatibility, unqualified endpoints are still resolved when their row is
+unique or when the opposite endpoint identifies the intended constellation.
